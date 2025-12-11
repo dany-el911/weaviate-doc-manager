@@ -1,0 +1,9 @@
+{
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3"
+  },
+  "dependencies": {
+    "tailwind-scrollbar": "^4.0.2"
+  }
+}
