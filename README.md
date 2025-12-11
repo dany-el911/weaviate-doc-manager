@@ -6,14 +6,30 @@ Questo tool permette di caricare file PDF e TXT, suddividerli in chunk, generare
 
 ## 📋 Prerequisiti
 
-Prima di iniziare, assicurati di avere installato:
+Prima di iniziare, assicurati di avere installato i seguenti strumenti.
 
-1.  **Node.js** (v18+ raccomandato) per il frontend.
-2.  **Python** (v3.12) per il backend.
-3.  **Docker** (per eseguire Weaviate).
-4.  **Ollama** installato e funzionante in locale.
+### 1. Node.js (per il Frontend)
+Necessario per eseguire l'interfaccia React.
+* Scarica la versione **LTS** (Long Term Support) dal [sito ufficiale Node.js](https://nodejs.org/).
+* **Verifica:** Dopo l'installazione, apri un terminale e digita:
+    ```bash
+    node -v
+    ```
 
----
+### 2. Python (per il Backend)
+* Necessaria la versione **3.12** o superiore.
+* Scarica da [python.org](https://www.python.org/downloads/).
+
+### 3. Docker (per il Database)
+* Necessario per eseguire Weaviate in un container.
+* Scarica **Docker Desktop** da [docker.com](https://www.docker.com/products/docker-desktop/).
+
+### 4. Ollama (per l'AI Locale)
+* Scarica da [ollama.com](https://ollama.com/).
+* Una volta installato, scarica il modello di embedding necessario eseguendo nel terminale:
+    ```bash
+    ollama pull mxbai-embed-large
+    ```
 
 ## 🚀 Setup Iniziale (Servizi Esterni)
 
