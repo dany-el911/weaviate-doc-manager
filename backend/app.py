@@ -12,6 +12,7 @@ import os
 import uuid
 import json
 import time
+from langdetect import detect
 
 app = Flask(__name__)
 CORS(app)
@@ -148,8 +149,16 @@ def create_collection():
                     data_type=DataType.TEXT,
                     description="Document content",
                 ),
+                Property(
+                    name="lang",
+                    data_type=DataType.TEXT,
+                    description="Language of the document (it, en, de)",
+                ),
             ],
-            vectorizer_config=Configure.Vectorizer.none(),
+            vectorizer_config=Configure.Vectorizer.text2vec_ollama(
+                api_endpoint="http://host.docker.internal:11434",
+                model=config.get('embedModel', 'bge-m3'),  # Assicurati di aver fatto 'ollama pull bge-m3'
+            ),
         )
 
         client.close()
@@ -273,6 +282,15 @@ def upload_documents():
                     })
                     continue
 
+                try:
+                    # Analizza solo i primi 2000 caratteri per velocità e precisione
+                    # Se il testo è troppo breve, analizzalo tutto
+                    sample_text = text[:2000] if len(text) > 2000 else text
+                    detected_lang = detect(sample_text)
+                except Exception:
+                    # Fallback se langdetect fallisce (es. testo pieno di numeri/simboli)
+                    detected_lang = "unknown"
+
                 chunks = chunk_text(text, chunk_size)
                 total_chunks = len(chunks)
 
@@ -304,8 +322,8 @@ def upload_documents():
                             "chunk_index": idx,
                             "doc_type": doc_type,
                             "content": chunk,
+                            "lang": detected_lang,
                         },
-                        vector=embedding,
                     )
 
                 processed_files += 1

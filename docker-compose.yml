@@ -17,8 +17,16 @@ services:
       QUERY_DEFAULTS_LIMIT: 25
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
       PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
-      DEFAULT_VECTORIZER_MODULE: 'none'  # Dice a Weaviate che i vettori vengono forniti da Ollama
-      ENABLE_MODULES: ''                 # Disabilita moduli extra non necessari
+      # 1. Abilitiamo i moduli per Ollama
+      ENABLE_MODULES: 'text2vec-ollama,generative-ollama'
+
+      # 2. Impostiamo Ollama come vettorizzatore di default (facoltativo ma comodo)
+      DEFAULT_VECTORIZER_MODULE: 'text2vec-ollama'
+
+      # 3. Diciamo a Weaviate dove trovare Ollama sul tuo Mac.
+      # "host.docker.internal" permette al container di vedere il tuo Mac (dove gira Ollama).
+      OLLAMA_API_BASE_URL: 'http://host.docker.internal:11434'
+
       CLUSTER_HOSTNAME: 'node1'
     volumes:
       - weaviate_data:/var/lib/weaviate

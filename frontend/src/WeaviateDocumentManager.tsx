@@ -105,7 +105,7 @@ const UploadLoader: React.FC<UploadLoaderProps> = ({ uploadId, onCancel, onCompl
     };
 
     return (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50">
             <div className="rounded-xl bg-[#1a1a1a] p-8 shadow-2xl border border-zinc-700 text-center w-[400px]">
                 <svg
                     className="animate-spin h-12 w-12 text-yellow-400 mx-auto mb-6"
@@ -180,9 +180,9 @@ const WeaviateDocumentManager: React.FC = () => {
     const [config, setConfig] = useState<ConfigState>({
         weaviateHost: "127.0.0.1",
         weaviatePort: "8080",
-        ollamaUrl: "http://localhost:11434",
-        embedModel: "mxbai-embed-large",
-        chunkSize: "512",
+        ollamaUrl: "http://127.0.0.1:11434",
+        embedModel: "bge-m3", // mxbai-embed-large
+        chunkSize: "1024",
     });
 
     const uploadAbortControllerRef = useRef<AbortController | null>(null);
@@ -250,8 +250,9 @@ const WeaviateDocumentManager: React.FC = () => {
             setStatus({ type: "success", message: `Collezione "${newCollectionName}" creata` });
             setNewCollectionName("");
             void loadCollections();
-        } catch (err: any) {
-            setStatus({ type: "error", message: err.message });
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "Errore sconosciuto";
+            setStatus({ type: "error", message });
         }
     };
 
@@ -266,8 +267,9 @@ const WeaviateDocumentManager: React.FC = () => {
             if (!res.ok) throw new Error("Errore eliminazione");
             setStatus({ type: "success", message: `Eliminata "${name}"` });
             void loadCollections();
-        } catch (err: any) {
-            setStatus({ type: "error", message: err.message });
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "Errore sconosciuto";
+            setStatus({ type: "error", message });
         }
     };
 
@@ -301,29 +303,30 @@ const WeaviateDocumentManager: React.FC = () => {
             body: formData,
             signal: controller.signal,
         })
-        .then(async (response) => {
-            const data = await response.json();
-            if (!response.ok) {
-                throw new Error(data.error || "Errore upload");
-            }
-            // Se va a buon fine, il polling nel Loader se ne accorgerà (state="done")
-            // quindi qui non dobbiamo fare nulla di specifico sull'UI.
-        })
-        .catch((error) => {
-            if (error.name === 'AbortError') return;
-            // Se la POST fallisce subito (es. server down), chiudiamo il loader
-            setUploadId(null);
-            setStatus({ type: "error", message: error.message });
-        });
+            .then(async (response) => {
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || "Errore upload");
+                }
+                // Se va a buon fine, il polling nel Loader se ne accorgerà (state="done")
+                // quindi qui non dobbiamo fare nulla di specifico sull'UI.
+            })
+            .catch((error) => {
+                if (error.name === 'AbortError') return;
+                // Se la POST fallisce subito (es. server down), chiudiamo il loader
+                setUploadId(null);
+                setStatus({ type: "error", message: error.message });
+            });
     };
 
     // Callback chiamata dal Loader quando ha finito
     const handleUploadComplete = () => {
         setUploadId(null);
-        setFiles([]);
+        setFiles([]); // Pulisce i file
+        setSelectedCollection(""); // <--- AGGIUNGI QUESTA RIGA: Resetta la dropdown
         setStatus({
             type: "success",
-            message: `Upload completato in "${selectedCollection}"`
+            message: `Upload completato con successo.` // Messaggio generico dato che la collezione è deselezionata
         });
     };
 
@@ -395,126 +398,135 @@ const WeaviateDocumentManager: React.FC = () => {
                 />
             )}
 
-            <div className="min-h-screen bg-[#0f0f0f] text-gray-100 p-6">
-                <div className="max-w-6xl mx-auto">
-                    <StatusAlert />
+                <div className="min-h-screen bg-[#0f0f0f] text-gray-100 p-6">
+                    <div className="max-w-6xl mx-auto">
+                        <StatusAlert />
 
-                    {/* SEZIONE CREAZIONE */}
-                    <div className="bg-[#1a1a1a] border border-zinc-800 rounded-xl shadow-md p-6 flex flex-col min-h-[260px] max-h-[410px]">
-                        <h2 className="text-xl font-semibold text-yellow-400 mb-4 flex items-center gap-2">
-                            <Plus className="w-5 h-5" /> Crea Nuova Collezione
-                        </h2>
-                        <input
-                            type="text"
-                            value={newCollectionName}
-                            placeholder="es. MY_DOCS"
-                            onChange={(e) => setNewCollectionName(e.target.value.toUpperCase())}
-                            className="w-full px-4 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 focus:border-yellow-400 focus:outline-none transition"
-                        />
-                        <button
-                            onClick={createCollection}
-                            className="mt-4 w-full bg-yellow-400 text-black font-medium py-3 rounded-lg hover:bg-yellow-500 transition"
-                        >
-                            + Crea Collezione
-                        </button>
-
-                        <div className="mt-6 space-y-2 flex-1 overflow-y-auto scrollbar-thin" style={{ scrollbarColor: "#facc15 #0b0b0b" }}>
-                            <h3 className="text-sm text-gray-300 mb-2 flex items-center gap-2">
-                                <Database className="w-4 h-4 text-yellow-400" /> Collezioni esistenti
-                            </h3>
-                            {collections.length === 0 ? (
-                                <p className="text-gray-500 italic text-sm">Nessuna collezione trovata</p>
-                            ) : (
-                                collections.map((col, idx) => (
-                                    <div key={idx} className="px-3 py-2 rounded bg-[#0f0f0f] border border-zinc-700 text-gray-300 text-sm flex justify-between items-center hover:border-zinc-500 transition">
-                                        <span>{col.class || col.name}</span>
-                                        <button onClick={() => deleteCollection((col.class || col.name)!)} className="text-red-400 hover:text-red-300 p-1">
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-
-                    {/* SEZIONE UPLOAD */}
-                    <div className="bg-[#1a1a1a] border border-zinc-800 rounded-xl shadow-md p-6 mt-6">
-                        <h2 className="text-xl font-semibold text-yellow-400 mb-4 flex items-center gap-2">
-                            <Upload className="w-5 h-5" /> Carica Documenti
-                        </h2>
-
-                        <div className="grid md:grid-cols-2 gap-6">
-                            <div>
-                                <label className="block text-sm text-gray-300 mb-1">Seleziona Collezione</label>
-                                <select
-                                    value={selectedCollection}
-                                    onChange={(e) => setSelectedCollection(e.target.value)}
-                                    className="w-full px-4 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 focus:border-yellow-400 focus:outline-none"
-                                >
-                                    <option value="">-- Scegli collezione --</option>
-                                    {collections.map((col, idx) => (
-                                        <option key={idx} value={col.class || col.name}>{col.class || col.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm text-gray-300 mb-1">Seleziona File (PDF/TXT)</label>
-                                <input
-                                    type="file"
-                                    multiple
-                                    accept=".pdf,.txt"
-                                    onChange={handleFileChange}
-                                    className="w-full px-4 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 focus:border-yellow-400 focus:outline-none"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="mt-6 border border-zinc-700 rounded-lg p-4 bg-[#0b0b0b]">
-                            <div className="flex items-center gap-2 mb-2">
-                                <AlertCircle className="w-4 h-4 text-yellow-400" />
-                                <span className="text-m font-medium text-gray-200">Impostazioni Chunk</span>
-                            </div>
+                        {/* SEZIONE CREAZIONE */}
+                        <div className="bg-[#1a1a1a] border border-zinc-800 rounded-xl shadow-md p-6 flex flex-col min-h-[260px] max-h-[410px]">
+                            <h2 className="text-xl font-semibold text-yellow-400 mb-4 flex items-center gap-2">
+                                <Plus className="w-5 h-5" /> Crea Nuova Collezione
+                            </h2>
                             <input
-                                type="number"
-                                min={64}
-                                max={4096}
-                                step={64}
-                                value={config.chunkSize}
-                                onChange={(e) => setConfig({ ...config, chunkSize: e.target.value })}
-                                className="w-full px-3 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 text-sm focus:border-yellow-400 focus:outline-none"
+                                type="text"
+                                value={newCollectionName}
+                                placeholder="es. MY_DOCS"
+                                onChange={(e) => setNewCollectionName(e.target.value.toUpperCase())}
+                                className="w-full px-4 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 focus:border-yellow-400 focus:outline-none transition"
                             />
-                            <p className="text-xs text-amber-400 mt-2">Valore consigliato: 512.</p>
-                        </div>
+                            <button
+                                onClick={createCollection}
+                                className="mt-4 w-full bg-yellow-400 text-black font-medium py-3 rounded-lg hover:bg-yellow-500 transition"
+                            >
+                                + Crea Collezione
+                            </button>
 
-                        {files.length > 0 && (
-                            <div className="mt-4 p-4 bg-[#0f0f0f] border border-zinc-700 rounded-lg">
-                                <h3 className="text-sm mb-2 text-gray-300 flex items-center gap-2">
-                                    <FileText className="w-4 h-4 text-yellow-400" /> File Selezionati ({files.length})
+                            <div className="mt-6 space-y-2 flex-1 overflow-y-auto scrollbar-thin" style={{ scrollbarColor: "#facc15 #0b0b0b" }}>
+                                <h3 className="text-sm text-gray-300 mb-2 flex items-center gap-2">
+                                    <Database className="w-4 h-4 text-yellow-400" /> Collezioni esistenti
                                 </h3>
-                                <ul className="space-y-1 text-sm max-h-40 overflow-y-auto pr-2 scrollbar-thin" style={{ scrollbarColor: "#555 #0f0f0f" }}>
-                                    {files.map((file, idx) => (
-                                        <li key={idx} className="flex justify-between items-center text-gray-400 bg-[#141414] px-2 py-1 rounded">
-                                            <span className="truncate flex-1">{file.name}</span>
-                                            <button onClick={() => removeFile(idx)} className="text-red-400 ml-2 hover:text-red-300">
+                                {collections.length === 0 ? (
+                                    <p className="text-gray-500 italic text-sm">Nessuna collezione trovata</p>
+                                ) : (
+                                    collections.map((col, idx) => (
+                                        <div key={idx} className="px-3 py-2 rounded bg-[#0f0f0f] border border-zinc-700 text-gray-300 text-sm flex justify-between items-center hover:border-zinc-500 transition">
+                                            <span>{col.class || col.name}</span>
+                                            <button onClick={() => deleteCollection((col.class || col.name)!)} className="text-red-400 hover:text-red-300 p-1">
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
-                                        </li>
-                                    ))}
-                                </ul>
+                                        </div>
+                                    ))
+                                )}
                             </div>
-                        )}
+                        </div>
 
-                        <button
-                            disabled={!!uploadId || !selectedCollection || files.length === 0}
-                            onClick={startUpload}
-                            className="mt-6 w-full bg-yellow-400 text-black font-medium py-3 rounded-lg hover:bg-yellow-500 disabled:bg-zinc-700 disabled:text-zinc-500 transition flex items-center justify-center gap-2"
-                        >
-                            {uploadId ? <Loader className="animate-spin w-5 h-5"/> : <Upload className="w-5 h-5"/>}
-                            {uploadId ? "Avvio..." : "Carica Documenti"}
-                        </button>
+                        {/* SEZIONE UPLOAD */}
+                        <div className="bg-[#1a1a1a] border border-zinc-800 rounded-xl shadow-md p-6 mt-6">
+                            <h2 className="text-xl font-semibold text-yellow-400 mb-4 flex items-center gap-2">
+                                <Upload className="w-5 h-5" /> Carica Documenti
+                            </h2>
+
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm text-gray-300 mb-1">Seleziona Collezione</label>
+                                    <select
+                                        value={selectedCollection}
+                                        onChange={(e) => setSelectedCollection(e.target.value)}
+                                        className="w-full px-4 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 focus:border-yellow-400 focus:outline-none"
+                                    >
+                                        <option value="">-- Scegli collezione --</option>
+                                        {collections.map((col, idx) => (
+                                            <option key={idx} value={col.class || col.name}>{col.class || col.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm text-gray-300 mb-1">Seleziona File (PDF/TXT)</label>
+                                    <input
+                                        type="file"
+                                        multiple
+                                        accept=".pdf,.txt"
+                                        onChange={handleFileChange}
+                                        className="w-full px-4 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 focus:border-yellow-400 focus:outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="mt-6 border border-zinc-700 rounded-lg p-4 bg-[#0b0b0b]">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <AlertCircle className="w-4 h-4 text-yellow-400" />
+                                    {/* Etichetta più chiara e professionale */}
+                                    <span className="text-m font-medium text-gray-200">Dimensione Frammenti (Chunk Size)</span>
+                                </div>
+
+                                <input
+                                    type="number"
+                                    min={64}
+                                    max={2048}
+                                    step={64}
+                                    value={config.chunkSize}
+                                    onChange={(e) => setConfig({ ...config, chunkSize: e.target.value })}
+                                    className="w-full px-3 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 text-sm focus:border-yellow-400 focus:outline-none"
+                                />
+
+                                {/* Spiegazione utile invece di un avvertimento generico */}
+                                <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+                                    Definisce la lunghezza massima di ogni blocco di testo.
+                                    <span className="block mt-1 text-amber-400/90">
+                                    Consigliato: 1024. Un valore più basso aumenta la precisione per dati specifici, un valore più alto mantiene più contesto narrativo.
+                                </span>
+                                </p>
+                            </div>
+
+                            {files.length > 0 && (
+                                <div className="mt-4 p-4 bg-[#0f0f0f] border border-zinc-700 rounded-lg">
+                                    <h3 className="text-sm mb-2 text-gray-300 flex items-center gap-2">
+                                        <FileText className="w-4 h-4 text-yellow-400" /> File Selezionati ({files.length})
+                                    </h3>
+                                    <ul className="space-y-1 text-sm max-h-40 overflow-y-auto pr-2 scrollbar-thin" style={{ scrollbarColor: "#facc15 #0b0b0b" }}>
+                                        {files.map((file, idx) => (
+                                            <li key={idx} className="flex justify-between items-center text-gray-400 bg-[#141414] px-2 py-1 rounded">
+                                                <span className="truncate flex-1">{file.name}</span>
+                                                <button onClick={() => removeFile(idx)} className="text-red-400 ml-2 hover:text-red-300">
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
+                            <button
+                                disabled={!!uploadId || !selectedCollection || files.length === 0}
+                                onClick={startUpload}
+                                className="mt-6 w-full bg-yellow-400 text-black font-medium py-3 rounded-lg hover:bg-yellow-500 disabled:bg-zinc-700 disabled:text-zinc-500 transition flex items-center justify-center gap-2"
+                            >
+                                {uploadId ? <Loader className="animate-spin w-5 h-5"/> : <Upload className="w-5 h-5"/>}
+                                {uploadId ? "Avvio..." : "Carica Documenti"}
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
         </>
     );
 };
