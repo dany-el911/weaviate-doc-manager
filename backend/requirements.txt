@@ -3,3 +3,11 @@ flask-cors
 requests
 weaviate-client
 pypdf
+pdfplumber
+pdf2image
+pytesseract
+Pillow
+langdetect
+transformers
+torch
+striprtf

@@ -23,12 +23,14 @@ interface StatusState {
     message: string;
 }
 
+type IngestMode = "precision" | "balanced" | "long_context";
+
 interface ConfigState {
     weaviateHost: string;
     weaviatePort: string;
     ollamaUrl: string;
     embedModel: string;
-    chunkSize: string;
+    ingestMode: IngestMode;
 }
 
 interface ProgressData {
@@ -181,8 +183,8 @@ const WeaviateDocumentManager: React.FC = () => {
         weaviateHost: "127.0.0.1",
         weaviatePort: "8080",
         ollamaUrl: "http://127.0.0.1:11434",
-        embedModel: "bge-m3", // mxbai-embed-large
-        chunkSize: "1024",
+        embedModel: "qwen3-embedding:4b", // mxbai-embed-large
+        ingestMode: "balanced",
     });
 
     const uploadAbortControllerRef = useRef<AbortController | null>(null);
@@ -398,135 +400,219 @@ const WeaviateDocumentManager: React.FC = () => {
                 />
             )}
 
-                <div className="min-h-screen bg-[#0f0f0f] text-gray-100 p-6">
-                    <div className="max-w-6xl mx-auto">
-                        <StatusAlert />
+            <div className="min-h-screen bg-[#0f0f0f] text-gray-100 p-6">
+                <div className="max-w-6xl mx-auto">
+                    <StatusAlert />
 
-                        {/* SEZIONE CREAZIONE */}
-                        <div className="bg-[#1a1a1a] border border-zinc-800 rounded-xl shadow-md p-6 flex flex-col min-h-[260px] max-h-[410px]">
-                            <h2 className="text-xl font-semibold text-yellow-400 mb-4 flex items-center gap-2">
-                                <Plus className="w-5 h-5" /> Crea Nuova Collezione
-                            </h2>
-                            <input
-                                type="text"
-                                value={newCollectionName}
-                                placeholder="es. MY_DOCS"
-                                onChange={(e) => setNewCollectionName(e.target.value.toUpperCase())}
-                                className="w-full px-4 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 focus:border-yellow-400 focus:outline-none transition"
-                            />
-                            <button
-                                onClick={createCollection}
-                                className="mt-4 w-full bg-yellow-400 text-black font-medium py-3 rounded-lg hover:bg-yellow-500 transition"
-                            >
-                                + Crea Collezione
-                            </button>
+                    {/* SEZIONE CREAZIONE */}
+                    <div className="bg-[#1a1a1a] border border-zinc-800 rounded-xl shadow-md p-6 flex flex-col min-h-[260px] max-h-[410px]">
+                        <h2 className="text-xl font-semibold text-yellow-400 mb-4 flex items-center gap-2">
+                            <Plus className="w-5 h-5" /> Crea Nuova Collezione
+                        </h2>
+                        <input
+                            type="text"
+                            value={newCollectionName}
+                            placeholder="es. MY_DOCS"
+                            onChange={(e) => setNewCollectionName(e.target.value.toUpperCase())}
+                            className="w-full px-4 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 focus:border-yellow-400 focus:outline-none transition"
+                        />
+                        <button
+                            onClick={createCollection}
+                            className="mt-4 w-full bg-yellow-400 text-black font-medium py-3 rounded-lg hover:bg-yellow-500 transition"
+                        >
+                            + Crea Collezione
+                        </button>
 
-                            <div className="mt-6 space-y-2 flex-1 overflow-y-auto scrollbar-thin" style={{ scrollbarColor: "#facc15 #0b0b0b" }}>
-                                <h3 className="text-sm text-gray-300 mb-2 flex items-center gap-2">
-                                    <Database className="w-4 h-4 text-yellow-400" /> Collezioni esistenti
-                                </h3>
-                                {collections.length === 0 ? (
-                                    <p className="text-gray-500 italic text-sm">Nessuna collezione trovata</p>
-                                ) : (
-                                    collections.map((col, idx) => (
-                                        <div key={idx} className="px-3 py-2 rounded bg-[#0f0f0f] border border-zinc-700 text-gray-300 text-sm flex justify-between items-center hover:border-zinc-500 transition">
-                                            <span>{col.class || col.name}</span>
-                                            <button onClick={() => deleteCollection((col.class || col.name)!)} className="text-red-400 hover:text-red-300 p-1">
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
-
-                        {/* SEZIONE UPLOAD */}
-                        <div className="bg-[#1a1a1a] border border-zinc-800 rounded-xl shadow-md p-6 mt-6">
-                            <h2 className="text-xl font-semibold text-yellow-400 mb-4 flex items-center gap-2">
-                                <Upload className="w-5 h-5" /> Carica Documenti
-                            </h2>
-
-                            <div className="grid md:grid-cols-2 gap-6">
-                                <div>
-                                    <label className="block text-sm text-gray-300 mb-1">Seleziona Collezione</label>
-                                    <select
-                                        value={selectedCollection}
-                                        onChange={(e) => setSelectedCollection(e.target.value)}
-                                        className="w-full px-4 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 focus:border-yellow-400 focus:outline-none"
-                                    >
-                                        <option value="">-- Scegli collezione --</option>
-                                        {collections.map((col, idx) => (
-                                            <option key={idx} value={col.class || col.name}>{col.class || col.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm text-gray-300 mb-1">Seleziona File (PDF/TXT)</label>
-                                    <input
-                                        type="file"
-                                        multiple
-                                        accept=".pdf,.txt"
-                                        onChange={handleFileChange}
-                                        className="w-full px-4 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 focus:border-yellow-400 focus:outline-none"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="mt-6 border border-zinc-700 rounded-lg p-4 bg-[#0b0b0b]">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <AlertCircle className="w-4 h-4 text-yellow-400" />
-                                    {/* Etichetta più chiara e professionale */}
-                                    <span className="text-m font-medium text-gray-200">Dimensione Frammenti (Chunk Size)</span>
-                                </div>
-
-                                <input
-                                    type="number"
-                                    min={64}
-                                    max={2048}
-                                    step={64}
-                                    value={config.chunkSize}
-                                    onChange={(e) => setConfig({ ...config, chunkSize: e.target.value })}
-                                    className="w-full px-3 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 text-sm focus:border-yellow-400 focus:outline-none"
-                                />
-
-                                {/* Spiegazione utile invece di un avvertimento generico */}
-                                <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-                                    Definisce la lunghezza massima di ogni blocco di testo.
-                                    <span className="block mt-1 text-amber-400/90">
-                                    Consigliato: 1024. Un valore più basso aumenta la precisione per dati specifici, un valore più alto mantiene più contesto narrativo.
-                                </span>
-                                </p>
-                            </div>
-
-                            {files.length > 0 && (
-                                <div className="mt-4 p-4 bg-[#0f0f0f] border border-zinc-700 rounded-lg">
-                                    <h3 className="text-sm mb-2 text-gray-300 flex items-center gap-2">
-                                        <FileText className="w-4 h-4 text-yellow-400" /> File Selezionati ({files.length})
-                                    </h3>
-                                    <ul className="space-y-1 text-sm max-h-40 overflow-y-auto pr-2 scrollbar-thin" style={{ scrollbarColor: "#facc15 #0b0b0b" }}>
-                                        {files.map((file, idx) => (
-                                            <li key={idx} className="flex justify-between items-center text-gray-400 bg-[#141414] px-2 py-1 rounded">
-                                                <span className="truncate flex-1">{file.name}</span>
-                                                <button onClick={() => removeFile(idx)} className="text-red-400 ml-2 hover:text-red-300">
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
+                        <div className="mt-6 space-y-2 flex-1 overflow-y-auto scrollbar-thin" style={{ scrollbarColor: "#facc15 #0b0b0b" }}>
+                            <h3 className="text-sm text-gray-300 mb-2 flex items-center gap-2">
+                                <Database className="w-4 h-4 text-yellow-400" /> Collezioni esistenti
+                            </h3>
+                            {collections.length === 0 ? (
+                                <p className="text-gray-500 italic text-sm">Nessuna collezione trovata</p>
+                            ) : (
+                                collections.map((col, idx) => (
+                                    <div key={idx} className="px-3 py-2 rounded bg-[#0f0f0f] border border-zinc-700 text-gray-300 text-sm flex justify-between items-center hover:border-zinc-500 transition">
+                                        <span>{col.class || col.name}</span>
+                                        <button onClick={() => deleteCollection((col.class || col.name)!)} className="text-red-400 hover:text-red-300 p-1">
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ))
                             )}
-
-                            <button
-                                disabled={!!uploadId || !selectedCollection || files.length === 0}
-                                onClick={startUpload}
-                                className="mt-6 w-full bg-yellow-400 text-black font-medium py-3 rounded-lg hover:bg-yellow-500 disabled:bg-zinc-700 disabled:text-zinc-500 transition flex items-center justify-center gap-2"
-                            >
-                                {uploadId ? <Loader className="animate-spin w-5 h-5"/> : <Upload className="w-5 h-5"/>}
-                                {uploadId ? "Avvio..." : "Carica Documenti"}
-                            </button>
                         </div>
                     </div>
+
+                    {/* SEZIONE UPLOAD */}
+                    <div className="bg-[#1a1a1a] border border-zinc-800 rounded-xl shadow-md p-6 mt-6">
+                        <h2 className="text-xl font-semibold text-yellow-400 mb-4 flex items-center gap-2">
+                            <Upload className="w-5 h-5" /> Carica Documenti
+                        </h2>
+
+                        <div className="grid md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-sm text-gray-300 mb-1">Seleziona Collezione</label>
+                                <select
+                                    value={selectedCollection}
+                                    onChange={(e) => setSelectedCollection(e.target.value)}
+                                    className="
+                                        w-full
+                                        appearance-none
+                                        px-4
+                                        py-2
+                                        bg-[#0f0f0f]
+                                        border
+                                        border-zinc-700
+                                        rounded-lg
+                                        text-gray-200
+                                        focus:border-yellow-400
+                                        focus:outline-none
+                                        focus:ring-2
+                                        focus:ring-yellow-400
+                                        bg-no-repeat
+                                        pr-10
+                                    "
+                                    style={{
+                                        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23facc15'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7' /%3E%3C/svg%3E")`,
+                                        backgroundPosition: "right 0.75rem center",
+                                        backgroundSize: "1rem",
+                                    }}
+                                >
+                                    <option value="">-- Scegli collezione --</option>
+
+                                    {collections.map((col, idx) => (
+                                        <option key={idx} value={col.class || col.name}>
+                                            {col.class || col.name}
+                                        </option>
+                                    ))}
+                                </select>
+
+                            </div>
+                            <div>
+                                <label className="block text-sm text-gray-300 mb-1">Seleziona File (PDF/TXT/RTF/Immagini)</label>
+                                <input
+                                    type="file"
+                                    multiple
+                                    accept=".pdf,.txt,.rtf,.jpg,.jpeg,.png,.tiff,.tif,.bmp"
+                                    onChange={handleFileChange}
+                                    className="w-full px-4 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 focus:border-yellow-400 focus:outline-none"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                    📸 OCR automatico multilingua per PDF scansionati e immagini
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="block text-sm font-medium">
+                                Modalità di ingest
+                            </label>
+
+                            <select
+                                className="
+                                    w-full
+                                    appearance-none
+                                    border
+                                    rounded
+                                    px-3
+                                    py-2
+                                    text-sm
+                                    bg-zinc-900
+                                    text-zinc-100
+                                    border-zinc-700
+                                    focus:outline-none
+                                    focus:ring-2
+                                    focus:ring-yellow-400
+                                    bg-no-repeat
+                                    bg-right
+                                    bg-[length:1rem]
+                                    pr-10
+                                "
+                                style={{
+                                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23facc15'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7' /%3E%3C/svg%3E")`,
+                                    backgroundPosition: "right 0.75rem center",
+                                }}
+                                value={config.ingestMode}
+                                onChange={(e) =>
+                                    setConfig({
+                                        ...config,
+                                        ingestMode: e.target.value as IngestMode,
+                                    })
+                                }
+                            >
+                                <option value="precision">
+                                    Precisione — più frammenti, maggiore accuratezza
+                                </option>
+                                <option value="balanced">
+                                    Bilanciata — consigliata
+                                </option>
+                                <option value="long_context">
+                                    Contesto lungo — documenti narrativi
+                                </option>
+                            </select>
+
+
+
+                            <p className="text-xs text-gray-500">
+                                La modalità determina come il testo viene suddiviso e indicizzato.
+                            </p>
+                        </div>
+
+
+                        {/*<div className="mt-6 border border-zinc-700 rounded-lg p-4 bg-[#0b0b0b]">*/}
+                        {/*    <div className="flex items-center gap-2 mb-2">*/}
+                        {/*        <AlertCircle className="w-4 h-4 text-yellow-400" />*/}
+                        {/*        /!* Etichetta più chiara e professionale *!/*/}
+                        {/*        <span className="text-m font-medium text-gray-200">Dimensione Frammenti (Chunk Size)</span>*/}
+                        {/*    </div>*/}
+
+                        {/*    <input*/}
+                        {/*        type="number"*/}
+                        {/*        min={64}*/}
+                        {/*        max={2048}*/}
+                        {/*        step={64}*/}
+                        {/*        value={config.chunkSize}*/}
+                        {/*        onChange={(e) => setConfig({ ...config, chunkSize: e.target.value })}*/}
+                        {/*        className="w-full px-3 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 text-sm focus:border-yellow-400 focus:outline-none"*/}
+                        {/*    />*/}
+
+                        {/*    /!* Spiegazione utile invece di un avvertimento generico *!/*/}
+                        {/*    <p className="text-xs text-gray-400 mt-2 leading-relaxed">*/}
+                        {/*        Definisce la lunghezza massima di ogni blocco di testo.*/}
+                        {/*        <span className="block mt-1 text-amber-400/90">*/}
+                        {/*        Consigliato: 1024. Un valore più basso aumenta la precisione per dati specifici, un valore più alto mantiene più contesto narrativo.*/}
+                        {/*    </span>*/}
+                        {/*    </p>*/}
+                        {/*</div>*/}
+
+                        {files.length > 0 && (
+                            <div className="mt-4 p-4 bg-[#0f0f0f] border border-zinc-700 rounded-lg">
+                                <h3 className="text-sm mb-2 text-gray-300 flex items-center gap-2">
+                                    <FileText className="w-4 h-4 text-yellow-400" /> File Selezionati ({files.length})
+                                </h3>
+                                <ul className="space-y-1 text-sm max-h-40 overflow-y-auto pr-2 scrollbar-thin" style={{ scrollbarColor: "#facc15 #0b0b0b" }}>
+                                    {files.map((file, idx) => (
+                                        <li key={idx} className="flex justify-between items-center text-gray-400 bg-[#141414] px-2 py-1 rounded">
+                                            <span className="truncate flex-1">{file.name}</span>
+                                            <button onClick={() => removeFile(idx)} className="text-red-400 ml-2 hover:text-red-300">
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+
+                        <button
+                            disabled={!!uploadId || !selectedCollection || files.length === 0}
+                            onClick={startUpload}
+                            className="mt-6 w-full bg-yellow-400 text-black font-medium py-3 rounded-lg hover:bg-yellow-500 disabled:bg-zinc-700 disabled:text-zinc-500 transition flex items-center justify-center gap-2"
+                        >
+                            {uploadId ? <Loader className="animate-spin w-5 h-5"/> : <Upload className="w-5 h-5"/>}
+                            {uploadId ? "Avvio..." : "Carica Documenti"}
+                        </button>
+                    </div>
                 </div>
+            </div>
         </>
     );
 };
