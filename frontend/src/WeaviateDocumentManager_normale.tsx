@@ -23,11 +23,14 @@ interface StatusState {
     message: string;
 }
 
+type IngestMode = "precision" | "balanced" | "long_context";
+
 interface ConfigState {
     weaviateHost: string;
     weaviatePort: string;
     ollamaUrl: string;
     embedModel: string;
+    ingestMode: IngestMode;
 }
 
 interface ProgressData {
@@ -80,14 +83,6 @@ const UploadLoader: React.FC<UploadLoaderProps> = ({ uploadId, onCancel, onCompl
                     }, 500);
                 }
 
-                if (data.stage === "cancelled") {
-                    clearInterval(interval);
-                    // Upload cancellato dall'utente
-                    setTimeout(() => {
-                        if (isMounted) onComplete();
-                    }, 300);
-                }
-
                 if (data.stage === "error") {
                     clearInterval(interval);
                     if (isMounted) onError(data.error || "Errore sconosciuto durante l'upload");
@@ -107,8 +102,6 @@ const UploadLoader: React.FC<UploadLoaderProps> = ({ uploadId, onCancel, onCompl
     const getStageLabel = (): string => {
         if (progress.stage === "starting") return "Inizializzazione...";
         if (progress.stage === "processing") return "Elaborazione documenti";
-        if (progress.stage === "cancelling") return "Annullamento in corso...";
-        if (progress.stage === "cancelled") return "Caricamento annullato";
         if (progress.stage === "done") return "Completato!";
         return "Caricamento in corso...";
     };
@@ -186,12 +179,13 @@ const WeaviateDocumentManager: React.FC = () => {
         message: "",
     });
 
-    const config: ConfigState = {
+    const [config, setConfig] = useState<ConfigState>({
         weaviateHost: "127.0.0.1",
         weaviatePort: "8080",
         ollamaUrl: "http://127.0.0.1:11434",
         embedModel: "qwen3-embedding:4b", // mxbai-embed-large
-    };
+        ingestMode: "balanced",
+    });
 
     const uploadAbortControllerRef = useRef<AbortController | null>(null);
 
@@ -358,32 +352,15 @@ const WeaviateDocumentManager: React.FC = () => {
         // Chiamata backend per pulizia
         if (currentId) {
             try {
-                const response = await fetch("http://127.0.0.1:5001/api/cancel-upload", {
+                await fetch("http://127.0.0.1:5001/api/cancel-upload", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ uploadId: currentId }),
                 });
-
-                if (response.ok) {
-                    const result = await response.json();
-                    const deletedCount = result.deleted || 0;
-                    setStatus({
-                        type: "success",
-                        message: `Upload annullato. Rimossi ${deletedCount} file dal database.`
-                    });
-                } else {
-                    setStatus({
-                        type: "error",
-                        message: "Upload annullato, ma potrebbero esserci dati residui nel database."
-                    });
-                }
-            } catch (e) {
-                console.error(e);
-                setStatus({ type: "", message: "" });
-            }
-        } else {
-            setStatus({ type: "", message: "" });
+            } catch (e) { console.error(e); }
         }
+
+        setStatus({ type: "", message: "" });
     };
 
     // --- RENDER HELPERS ---
@@ -523,6 +500,61 @@ const WeaviateDocumentManager: React.FC = () => {
                                     📸 OCR automatico multilingua per PDF scansionati e immagini
                                 </p>
                             </div>
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="block text-sm font-medium">
+                                Modalità di ingest
+                            </label>
+
+                            <select
+                                className="
+                                    w-full
+                                    appearance-none
+                                    border
+                                    rounded
+                                    px-3
+                                    py-2
+                                    text-sm
+                                    bg-zinc-900
+                                    text-zinc-100
+                                    border-zinc-700
+                                    focus:outline-none
+                                    focus:ring-2
+                                    focus:ring-yellow-400
+                                    bg-no-repeat
+                                    bg-right
+                                    bg-[length:1rem]
+                                    pr-10
+                                "
+                                style={{
+                                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23facc15'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7' /%3E%3C/svg%3E")`,
+                                    backgroundPosition: "right 0.75rem center",
+                                }}
+                                value={config.ingestMode}
+                                onChange={(e) =>
+                                    setConfig({
+                                        ...config,
+                                        ingestMode: e.target.value as IngestMode,
+                                    })
+                                }
+                            >
+                                <option value="precision">
+                                    Precisione — più frammenti, maggiore accuratezza
+                                </option>
+                                <option value="balanced">
+                                    Bilanciata — consigliata
+                                </option>
+                                <option value="long_context">
+                                    Contesto lungo — documenti narrativi
+                                </option>
+                            </select>
+
+
+
+                            <p className="text-xs text-gray-500">
+                                La modalità determina come il testo viene suddiviso e indicizzato.
+                            </p>
                         </div>
 
 
