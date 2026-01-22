@@ -1,25 +1,28 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+import json
+import os
+import re
+import tempfile
+import time
+import traceback
+import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Any, Dict, List
+from urllib.parse import urlparse, urlunparse
+
 import requests
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+
 import weaviate
-from weaviate.classes.config import Property, DataType, Configure
+from weaviate.classes.config import Configure, DataType, Property
 from weaviate.classes.query import Filter
 
-from typing import Dict, Any, List
-import tempfile
-import os
-import uuid
-import json
-
-from langdetect import detect
-
-# Docling imports
-from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions, TesseractCliOcrOptions
-
-# Tokenizer
+from docling.document_converter import DocumentConverter, PdfFormatOption
+from langdetect import detect
+from PIL import Image, ImageEnhance, ImageFilter
 from transformers import AutoTokenizer
 
 app = Flask(__name__)
@@ -36,34 +39,82 @@ UPLOAD_SESSIONS: Dict[str, Dict[str, Any]] = {}
 # CONFIG / PRESETS (allineati alla versione vecchia funzionante)
 # -----------------------------
 INGEST_PRESETS = {
-    "precision":    {"max_tokens": 384,  "overlap_tokens": 64},
-    "balanced":     {"max_tokens": 640,  "overlap_tokens": 80},
-    "long_context": {"max_tokens": 1024, "overlap_tokens": 96},
+    "precision": {"max_tokens": 384, "overlap_tokens": 64},
+    "balanced": {"max_tokens": 1024, "overlap_tokens": 128},
+    "long_context": {"max_tokens": 2048, "overlap_tokens": 192},
 }
+
 
 _TOKENIZER_CACHE: Dict[str, Any] = {}
 
 # Assicurati che il processo Python veda Tesseract
 os.environ["PATH"] = "/usr/local/bin:" + os.environ.get("PATH", "")
 
-# (Opzionale ma consigliato se non l'hai settato in shell)
-# os.environ.setdefault("TESSDATA_PREFIX", "/usr/local/share/tessdata/")
+def _build_pdf_converter(*, do_ocr: bool) -> DocumentConverter:
+    po = PdfPipelineOptions()
+    po.do_ocr = do_ocr
 
-pipeline_options = PdfPipelineOptions()
-pipeline_options.do_ocr = True
-pipeline_options.ocr_options = TesseractCliOcrOptions(force_full_page_ocr=True)
+    if do_ocr:
+        # OCR sì, ma NON forzare full-page (quello ti ammazza i tempi)
+        po.ocr_options = TesseractCliOcrOptions(force_full_page_ocr=False)
 
-# Docling converter globale configurato per PDF scansione (OCR)
-doc_converter = DocumentConverter(
-    format_options={
-        InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
-    }
-)
+    return DocumentConverter(
+        format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=po)}
+    )
+
+# Due converter: uno veloce (no OCR) e uno fallback (OCR)
+doc_converter_no_ocr = _build_pdf_converter(do_ocr=False)
+doc_converter_ocr = _build_pdf_converter(do_ocr=True)
 
 
 # -----------------------------
 # Helpers
 # -----------------------------
+def preprocess_image_for_ocr(image_path: str) -> str:
+    """
+    Preprocessa un'immagine per migliorare la qualità dell'OCR:
+    - Conversione in scala di grigi
+    - Aumento del contrasto
+    - Sharpening
+
+    Args:
+        image_path: Percorso dell'immagine da preprocessare
+
+    Returns:
+        Percorso dell'immagine preprocessata (stesso file sovrascritto)
+    """
+    try:
+        print(f"[Preprocessing] Inizio preprocessing immagine: {image_path}")
+
+        # Apri immagine
+        img = Image.open(image_path)
+
+        # 1. Conversione in scala di grigi
+        if img.mode != 'L':
+            img = img.convert('L')
+            print(f"[Preprocessing] Convertita in scala di grigi")
+
+        # 2. Aumento del contrasto (fattore 2.0 = raddoppia il contrasto)
+        enhancer = ImageEnhance.Contrast(img)
+        img = enhancer.enhance(2.0)
+        print(f"[Preprocessing] Contrasto aumentato (fattore 2.0)")
+
+        # 3. Sharpening per migliorare nitidezza
+        img = img.filter(ImageFilter.SHARPEN)
+        print(f"[Preprocessing] Applicato sharpening")
+
+        # Salva immagine preprocessata sovrascrivendo l'originale
+        img.save(image_path)
+        print(f"[Preprocessing] Immagine preprocessata salvata: {image_path}")
+
+        return image_path
+
+    except Exception as e:
+        print(f"[Preprocessing] Errore durante preprocessing: {e}")
+        # In caso di errore, ritorna il path originale senza preprocessing
+        return image_path
+
+
 def normalize_text(text: str) -> str:
     """
     Rimuove caratteri Unicode non validi per UTF-8 (es. surrogates),
@@ -108,10 +159,10 @@ def get_tokenizer(embed_model: str):
 
 
 def chunk_text_token_based(
-    text: str,
-    tokenizer,
-    max_tokens: int,
-    overlap_tokens: int,
+        text: str,
+        tokenizer,
+        max_tokens: int,
+        overlap_tokens: int,
 ) -> List[str]:
     """
     Chunking a token + overlap fisso in token.
@@ -199,6 +250,126 @@ def get_ollama_embedding(text: str, ollama_url: str, model: str) -> list[float]:
         raise
 
 
+def get_ollama_embeddings_batch(
+    texts: List[str],
+    ollama_url: str,
+    model: str,
+    batch_size: int = 10,
+    progress_callback=None
+) -> List[list[float]]:
+    """
+    Genera embedding in batch per velocizzare il processing.
+
+    Args:
+        texts: Lista di testi da cui generare embedding
+        ollama_url: URL del server Ollama
+        model: Nome del modello da usare
+        batch_size: Numero di testi da processare per batch
+        progress_callback: Funzione chiamata ad ogni batch completato (batch_num, total_batches)
+
+    Returns:
+        Lista di embedding (uno per testo)
+    """
+    embeddings = []
+    total = len(texts)
+
+    print(f"[Batch Embedding] Starting batch processing: {total} texts, batch_size={batch_size}")
+
+    for i in range(0, total, batch_size):
+        batch = texts[i:i + batch_size]
+        batch_num = i // batch_size + 1
+        total_batches = (total + batch_size - 1) // batch_size
+
+        print(f"[Batch Embedding] Processing batch {batch_num}/{total_batches} ({len(batch)} texts)")
+
+        # Prova prima con batch API se supportata
+        try:
+            payload = {"model": model, "input": batch}
+            resp = requests.post(f"{ollama_url}/api/embed", json=payload, timeout=180)
+            if resp.ok:
+                data = resp.json()
+                batch_embeddings = data.get("embeddings", [])
+                if len(batch_embeddings) == len(batch):
+                    embeddings.extend(batch_embeddings)
+                    print(f"[Batch Embedding] Batch {batch_num} OK (native batch API)")
+                    # Callback DOPO il completamento del batch
+                    if progress_callback:
+                        progress_callback(batch_num, total_batches)
+                    continue
+        except Exception as e:
+            print(f"[Batch Embedding] Native batch API failed: {e}, falling back to sequential")
+
+        # Fallback: processa sequenzialmente il batch
+        for idx, text in enumerate(batch):
+            try:
+                payload = {"model": model, "prompt": text}
+                resp = requests.post(f"{ollama_url}/api/embeddings", json=payload, timeout=120)
+                if resp.ok:
+                    data = resp.json()
+                    embeddings.append(data["embedding"])
+                else:
+                    raise Exception(f"Ollama error: {resp.status_code}")
+            except Exception as e:
+                print(f"[Batch Embedding] Error on text {i + idx}: {e}")
+                raise
+
+        print(f"[Batch Embedding] Batch {batch_num} completed (sequential fallback)")
+
+        # Callback DOPO il completamento del batch (anche per fallback sequenziale)
+        if progress_callback:
+            progress_callback(batch_num, total_batches)
+
+    print(f"[Batch Embedding] All batches completed: {len(embeddings)} embeddings generated")
+    return embeddings
+
+
+def doc_to_clean_text(doc) -> str:
+    full_text_local = ""
+
+    # Metodo 1: export_to_text
+    if hasattr(doc, "export_to_text"):
+        try:
+            full_text_local = doc.export_to_text()
+            print(f"[Docling] Used export_to_text: {len(full_text_local)} chars")
+        except Exception as e:
+            print(f"[Docling] export_to_text failed: {e}")
+
+    # Metodo 2: iterate_items
+    if not full_text_local or len(full_text_local.strip()) < 10:
+        try:
+            text_parts = []
+            for item in doc.iterate_items():
+                if isinstance(item, tuple):
+                    item = item[0]
+                if hasattr(item, "text") and item.text:
+                    clean_text = normalize_text(item.text).strip()
+                    if clean_text:
+                        text_parts.append(clean_text)
+            full_text_local = "\n\n".join(text_parts)
+            print(f"[Docling] Used iterate_items: {len(text_parts)} elements, {len(full_text_local)} chars")
+        except Exception as e:
+            print(f"[Docling] iterate_items failed: {e}")
+
+    # Metodo 3: export_to_markdown + pulizia
+    if not full_text_local or len(full_text_local.strip()) < 10:
+        try:
+            md_text = doc.export_to_markdown()
+            # Rimuove header markdown (# ## ###)
+            full_text_local = re.sub(r"^#+\s*", "", md_text, flags=re.MULTILINE)
+            # Rimuove bold (**testo**)
+            full_text_local = re.sub(r"\*\*([^*]+)\*\*", r"\1", full_text_local)
+            # Rimuove italic (*testo*)
+            full_text_local = re.sub(r"\*([^*]+)\*", r"\1", full_text_local)
+            # Rimuove code inline (`testo`)
+            full_text_local = re.sub(r"`([^`]+)`", r"\1", full_text_local)
+            # Rimuove link markdown [testo](url)
+            full_text_local = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", full_text_local)
+            print(f"[Docling] Used export_to_markdown (cleaned): {len(full_text_local)} chars")
+        except Exception as e:
+            print(f"[Docling] export_to_markdown failed: {e}")
+
+    return full_text_local
+
 def extract_with_docling(
         file_path: str,
         tokenizer,
@@ -229,55 +400,45 @@ def extract_with_docling(
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 full_text = f.read()
             print(f"[Docling] TXT file read directly: {len(full_text)} chars")
-        else:
-            # Converti documento con Docling
-            result = doc_converter.convert(file_path)
+        # Gestione file immagine: preprocessing prima dell'OCR
+        elif file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.tiff', '.tif', '.bmp')):
+            print(f"[Docling] Immagine rilevata, applicando preprocessing per OCR...")
+            # Preprocessa immagine per migliorare OCR
+            preprocess_image_for_ocr(file_path)
+
+            # Ora procedi con Docling OCR sul file preprocessato
+            t0 = time.perf_counter()
+            result = doc_converter_ocr.convert(file_path)
             doc = result.document
+            print(f"[Docling] convert(ocr) per immagine took {time.perf_counter() - t0:.2f}s")
 
-            # Prova diversi metodi per estrarre il testo pulito
-            full_text = ""
+            full_text = doc_to_clean_text(doc)
+            print(f"[Docling] Final extracted text from image: {len(full_text)} chars")
+        else:
+            # ---- PASS 1: NO OCR ----
+            t0 = time.perf_counter()
+            result = doc_converter_no_ocr.convert(file_path)
+            doc = result.document
+            print(f"[Docling] convert(no_ocr) took {time.perf_counter() - t0:.2f}s")
 
-            # Metodo 1: export_to_text (più pulito, senza markdown)
-            if hasattr(doc, 'export_to_text'):
-                try:
-                    full_text = doc.export_to_text()
-                    print(f"[Docling] Used export_to_text: {len(full_text)} chars")
-                except Exception as e:
-                    print(f"[Docling] export_to_text failed: {e}")
+            full_text = doc_to_clean_text(doc)
+            print(f"[Docling] Final extracted text (no_ocr): {len(full_text)} chars")
 
-            # Metodo 2: iterate_items se export_to_text non disponibile o vuoto
-            if not full_text or len(full_text.strip()) < 10:
-                try:
-                    text_parts = []
-                    for item in doc.iterate_items():
-                        # Gestisci sia tuple (item, level) che oggetti singoli
-                        if isinstance(item, tuple):
-                            item = item[0]
-                        if hasattr(item, 'text') and item.text:
-                            clean_text = normalize_text(item.text).strip()
-                            if clean_text:
-                                text_parts.append(clean_text)
-                    full_text = "\n\n".join(text_parts)
-                    print(f"[Docling] Used iterate_items: {len(text_parts)} elements, {len(full_text)} chars")
-                except Exception as e:
-                    print(f"[Docling] iterate_items failed: {e}")
+            # Soglia: sotto qui consideri “testo insufficiente” e fai OCR
+            MIN_CHARS_BEFORE_OCR = 2000
 
-            # Metodo 3: Fallback a export_to_markdown e pulizia
-            if not full_text or len(full_text.strip()) < 10:
-                try:
-                    md_text = doc.export_to_markdown()
-                    # Rimuovi formattazione markdown
-                    import re
-                    full_text = re.sub(r'^#+\s*', '', md_text, flags=re.MULTILINE)  # Rimuovi headers
-                    full_text = re.sub(r'\*\*([^*]+)\*\*', r'\1', full_text)  # Rimuovi bold
-                    full_text = re.sub(r'\*([^*]+)\*', r'\1', full_text)  # Rimuovi italic
-                    full_text = re.sub(r'`([^`]+)`', r'\1', full_text)  # Rimuovi code
-                    full_text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', full_text)  # Rimuovi links
-                    print(f"[Docling] Used export_to_markdown (cleaned): {len(full_text)} chars")
-                except Exception as e:
-                    print(f"[Docling] export_to_markdown failed: {e}")
+            # ---- PASS 2: OCR fallback (solo se serve e SOLO per PDF) ----
+            if file_path.lower().endswith(".pdf"):
+                if not full_text or len(full_text.strip()) < MIN_CHARS_BEFORE_OCR:
+                    print(f"[Docling] Low text ({len(full_text.strip()) if full_text else 0} chars) -> OCR fallback...")
 
-            print(f"[Docling] Final extracted text: {len(full_text)} chars")
+                    t1 = time.perf_counter()
+                    result = doc_converter_ocr.convert(file_path)
+                    doc = result.document
+                    print(f"[Docling] convert(ocr) took {time.perf_counter() - t1:.2f}s")
+
+                    full_text = doc_to_clean_text(doc)
+                    print(f"[Docling] Final extracted text (ocr): {len(full_text)} chars")
 
         if not full_text or len(full_text.strip()) < 10:
             print(f"[Docling] WARNING: Very little text extracted from {file_path}")
@@ -309,7 +470,6 @@ def extract_with_docling(
 
     except Exception as e:
         print(f"[Docling] Extraction error for {file_path}: {e}")
-        import traceback
         traceback.print_exc()
         return []
 
@@ -317,6 +477,8 @@ def extract_with_docling(
 # -----------------------------
 # API ENDPOINTS
 # -----------------------------
+
+
 @app.route('/api/upload-progress/<upload_id>', methods=['GET'])
 def get_upload_progress(upload_id: str):
     """Ritorna lo stato di progresso per un upload_id"""
@@ -333,36 +495,48 @@ def create_collection():
         collection_name = data['name']
         config = data['config']
 
-        client = init_weaviate_client(config['weaviateHost'], config['weaviatePort'])
+        client = init_weaviate_client(
+            config['weaviateHost'],
+            config['weaviatePort']
+        )
 
         if collection_name in client.collections.list_all():
             client.close()
             return jsonify({'error': 'Collection already exists'}), 400
 
-        # Determina l'URL corretto per Ollama in base all'ambiente
-        # Se Weaviate è in Docker, usa host.docker.internal
-        # Altrimenti usa localhost
-        ollama_endpoint = config.get('ollamaUrl', 'http://localhost:11434')
-        if 'localhost' in ollama_endpoint or '127.0.0.1' in ollama_endpoint:
-            # Weaviate è in Docker, quindi deve usare host.docker.internal
-            ollama_endpoint = ollama_endpoint.replace('localhost', 'host.docker.internal').replace('127.0.0.1', 'host.docker.internal')
+        # ✅ Endpoint Ollama con parsing URL corretto
+        ollama_endpoint = config.get('ollamaUrl', 'http://host.docker.internal:11434')
+
+        # Parse e conversione intelligente localhost → host.docker.internal
+        parsed = urlparse(ollama_endpoint)
+        if parsed.hostname in ['localhost', '127.0.0.1']:
+            parsed = parsed._replace(netloc=f'host.docker.internal:{parsed.port or 11434}')
+            ollama_endpoint = urlunparse(parsed)
 
         client.collections.create(
             name=collection_name,
             properties=[
-                Property(name="title", data_type=DataType.TEXT, description="Original document name"),
+                Property(name="title", data_type=DataType.TEXT,
+                         description="Original document name"),
                 Property(name="file_id", data_type=DataType.TEXT,
                          description="Internal unique id for this file (per upload)."),
-                Property(name="chunk_index", data_type=DataType.INT, description="Chunk index"),
-                Property(name="doc_type", data_type=DataType.TEXT, description="Document type"),
-                Property(name="content", data_type=DataType.TEXT, description="Document content (chunk)"),
-                Property(name="lang", data_type=DataType.TEXT, description="Detected language"),
-                Property(name="page", data_type=DataType.INT, description="Document page number"),
-                Property(name="block_kind", data_type=DataType.TEXT, description="Chunk type (docling_chunk)"),
+                Property(name="chunk_index", data_type=DataType.INT,
+                         description="Chunk index"),
+                Property(name="doc_type", data_type=DataType.TEXT,
+                         description="Document type"),
+                Property(name="content", data_type=DataType.TEXT,
+                         description="Document content (chunk)"),
+                Property(name="lang", data_type=DataType.TEXT,
+                         description="Detected language"),
+                Property(name="page", data_type=DataType.INT,
+                         description="Document page number"),
+                Property(name="block_kind", data_type=DataType.TEXT,
+                         description="Chunk type (docling_chunk)"),
             ],
             vectorizer_config=Configure.Vectorizer.text2vec_ollama(
-                # api_endpoint=ollama_endpoint,
-                model=config.get('embedModel', 'qwen3-embedding:4b')
+                model=config.get('embedModel', 'qwen3-embedding:4b'),
+                api_endpoint=ollama_endpoint,  # ← URL corretto
+                vectorize_collection_name=True
             ),
         )
 
@@ -371,6 +545,7 @@ def create_collection():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
 
 
 @app.route('/api/delete-collection', methods=['POST'])
@@ -433,7 +608,6 @@ def upload_documents():
                 "file_ids": [],
             }
 
-
         # Tokenizer coerente con modello embedding
         embed_model = config["embedModel"]
         tokenizer = get_tokenizer(embed_model)
@@ -454,6 +628,8 @@ def upload_documents():
         ]
 
         for file_idx, file in enumerate(files):
+            print(f"[UPLOAD] Inizio elaborazione file {file_idx+1}/{total_files}: {file.filename}")
+
             # CONTROLLA SE UPLOAD È STATO CANCELLATO
             if upload_id and upload_id in upload_progress:
                 if upload_progress[upload_id].get("cancelled", False):
@@ -487,21 +663,25 @@ def upload_documents():
                     })
                     continue
 
-                doc_type = Path(file.filename).suffix[1:]  # es. "pdf", "docx"
+                doc_type = Path(file.filename).suffix[1:]
 
                 # Ottieni preset chunking (default: balanced)
                 preset_name = config.get('ingestPreset', 'balanced')
                 preset = INGEST_PRESETS.get(preset_name, INGEST_PRESETS['balanced'])
 
-                print(f"[Upload] Using chunking preset: {preset_name} (max_tokens={preset['max_tokens']}, overlap={preset['overlap_tokens']})")
+                print(
+                    f"[Upload] Using chunking preset: {preset_name} (max_tokens={preset['max_tokens']}, overlap={preset['overlap_tokens']})")
 
                 # Estrazione con Docling + chunking intelligente con overlap
+                print(f"[UPLOAD] Estrazione e chunking del file: {file.filename}")
                 blocks = extract_with_docling(
                     tmp_path,
                     tokenizer=tokenizer,
                     max_tokens=preset['max_tokens'],
                     overlap_tokens=preset['overlap_tokens']
                 )
+
+                print(f"[UPLOAD] Chunking completato: {len(blocks)} chunk estratti")
 
                 if not blocks:
                     failed_files.append({
@@ -543,59 +723,73 @@ def upload_documents():
 
                 print(f"[Upload] File: {file.filename} - Chunks: {len(blocks)} - Lang: {detected_lang}")
 
-                # AGGIUNGI file_id SUBITO alla sessione (prima di iniziare i chunk)
-                # così è disponibile per la cancellazione
+                # AGGIUNGI file_id SUBITO alla sessione
                 if upload_id and upload_id in UPLOAD_SESSIONS:
                     UPLOAD_SESSIONS[upload_id]["file_ids"].append(file_id)
 
                 total_chunks = len(blocks)
 
-                for idx, block in enumerate(blocks):
-                    # CONTROLLA SE UPLOAD È STATO CANCELLATO (anche durante i chunk)
-                    if upload_id and upload_id in upload_progress:
-                        if upload_progress[upload_id].get("cancelled", False):
-                            print(f"[Upload] Upload {upload_id} cancellato durante chunk {idx+1}/{total_chunks}")
-                            # Rollback dei chunk di questo file già caricati
-                            try:
-                                collection.data.delete_many(
-                                    where=Filter.by_property("file_id").equal(file_id)
-                                )
-                                print(f"[Upload] Rimossi chunk parziali del file {file.filename}")
-                            except Exception as e:
-                                print(f"[Upload] Errore rimozione chunk parziali: {e}")
-                            raise Exception("Upload cancellato dall'utente")
+                # Step 1: Estrai tutti i testi dai chunk
+                chunk_texts = [block["content"] for block in blocks]
 
-                    # Progress: anche durante i chunk
+                # Step 2: Controlla cancellazione prima del batch embedding
+                if upload_id and upload_id in upload_progress:
+                    if upload_progress[upload_id].get("cancelled", False):
+                        print(f"[Upload] Upload {upload_id} cancellato prima del batch embedding")
+                        raise Exception("Upload cancellato dall'utente")
+
+                # Step 3: Callback per aggiornare progress durante batch embedding
+                def batch_progress_callback(batch_num, total_batches):
                     if upload_id:
-                        file_progress = (idx / total_chunks) if total_chunks > 0 else 0
+                        # Calcola progress: 10% base + (40% * progresso batch)
+                        batch_progress = batch_num / total_batches
+                        file_progress = 0.1 + (batch_progress * 0.4)  # 10% - 50%
                         overall_progress = (file_idx + file_progress) / total_files
                         upload_progress[upload_id] = {
                             "stage": "processing",
                             "current": file_idx,
                             "total": total_files,
                             "percent": int(overall_progress * 100),
-                            "currentFile": f"{file.filename} (chunk {idx + 1}/{total_chunks})",
+                            "currentFile": f"{file.filename} (embedding batch {batch_num}/{total_batches})",
                             "cancelled": False
                         }
 
-                    chunk_text = block["content"]
+                # Step 4: Genera tutti gli embedding in batch
+                print(f"[UPLOAD] Inizio batch embedding per {len(blocks)} chunk...")
+                embeddings = get_ollama_embeddings_batch(
+                    chunk_texts,
+                    config['ollamaUrl'],
+                    config['embedModel'],
+                    batch_size=10,
+                    progress_callback=batch_progress_callback
+                )
+                print(f"[UPLOAD] Batch embedding completato: {len(embeddings)} embedding generati")
 
-                    # CONTROLLA CANCELLAZIONE PRIMA DELL'EMBEDDING (operazione lenta)
+                # Step 5: Controlla cancellazione dopo batch embedding
+                if upload_id and upload_id in upload_progress:
+                    if upload_progress[upload_id].get("cancelled", False):
+                        print(f"[Upload] Upload {upload_id} cancellato dopo batch embedding")
+                        raise Exception("Upload cancellato dall'utente")
+
+                # Step 6: Progress: inizio inserimento parallelo
+                if upload_id:
+                    file_progress = 0.5
+                    overall_progress = (file_idx + file_progress) / total_files
+                    upload_progress[upload_id] = {
+                        "stage": "processing",
+                        "current": file_idx,
+                        "total": total_files,
+                        "percent": int(overall_progress * 100),
+                        "currentFile": f"{file.filename} (inserting chunks...)",
+                        "cancelled": False
+                    }
+
+                # Step 7: Funzione per inserire un singolo chunk
+                def insert_chunk(idx, block, embedding_vec):
+                    """Inserisce un chunk in Weaviate (eseguito in parallelo)"""
+                    # Controlla cancellazione anche nei thread
                     if upload_id and upload_id in upload_progress:
                         if upload_progress[upload_id].get("cancelled", False):
-                            print(f"[Upload] Cancellato prima di embedding chunk {idx+1}/{total_chunks}")
-                            raise Exception("Upload cancellato dall'utente")
-
-                    embedding = get_ollama_embedding(
-                        chunk_text,
-                        config['ollamaUrl'],
-                        config['embedModel']
-                    )
-
-                    # CONTROLLA CANCELLAZIONE ANCHE DOPO EMBEDDING (prima dell'insert)
-                    if upload_id and upload_id in upload_progress:
-                        if upload_progress[upload_id].get("cancelled", False):
-                            print(f"[Upload] Cancellato dopo embedding chunk {idx+1}/{total_chunks}")
                             raise Exception("Upload cancellato dall'utente")
 
                     result = collection.data.insert(
@@ -604,27 +798,64 @@ def upload_documents():
                             "file_id": file_id,
                             "chunk_index": idx,
                             "doc_type": doc_type,
-                            "content": chunk_text,
+                            "content": block["content"],
                             "lang": detected_lang,
                             "page": block.get("page", 0),
                             "block_kind": block.get("kind", "docling_chunk"),
                         },
-                        vector=embedding,
+                        vector=embedding_vec,
                     )
+                    return idx, result
 
-                    print(f"[Upload] Inserted chunk {idx + 1}/{total_chunks} - UUID: {result}")
+                # Step 8: Inserisci chunk in parallelo
+                print(f"[UPLOAD] Inizio inserimento parallelo dei chunk in Weaviate...")
+                inserted_count = 0
+
+                with ThreadPoolExecutor(max_workers=4) as executor:
+                    futures = []
+                    for idx, (block, embedding_vec) in enumerate(zip(blocks, embeddings)):
+                        future = executor.submit(insert_chunk, idx, block, embedding_vec)
+                        futures.append(future)
+
+                    for future in as_completed(futures):
+                        try:
+                            if upload_id and upload_id in upload_progress:
+                                if upload_progress[upload_id].get("cancelled", False):
+                                    print(f"[Upload] Upload {upload_id} cancellato durante inserimento parallelo")
+                                    executor.shutdown(wait=False, cancel_futures=True)
+                                    raise Exception("Upload cancellato dall'utente")
+
+                            idx, result = future.result()
+                            inserted_count += 1
+                            # AGGIORNA PROGRESS con contatore chunk come in app.py
+                            if upload_id:
+                                insert_progress = inserted_count / total_chunks
+                                file_progress = 0.5 + (insert_progress * 0.5)
+                                overall_progress = (file_idx + file_progress) / total_files
+                                upload_progress[upload_id] = {
+                                    "stage": "processing",
+                                    "current": file_idx,
+                                    "total": total_files,
+                                    "percent": int(overall_progress * 100),
+                                    "currentFile": f"{file.filename} (chunk {inserted_count}/{total_chunks})",
+                                    "cancelled": False
+                                }
+                            if inserted_count % 10 == 0 or inserted_count == total_chunks:
+                                print(f"[UPLOAD] {inserted_count}/{total_chunks} chunk inseriti in Weaviate")
+                        except Exception as e:
+                            print(f"[UPLOAD] Errore durante inserimento chunk: {e}")
+                            raise
+
+                print(f"[UPLOAD] Inserimento completato: {inserted_count} chunk inseriti per il file {file.filename}")
 
                 processed_files += 1
                 uploaded_files.append(file.filename)
-                # file_id già aggiunto all'inizio, non serve duplicare
 
             except Exception as file_error:
-                # Controlla se è una cancellazione
                 if "Upload cancellato" in str(file_error):
                     print(f"[Upload] Cancellazione rilevata, interrompo loop...")
-                    break  # Esce dal loop FOR
+                    break
 
-                # rollback file in caso di errore
                 try:
                     collection.data.delete_many(
                         where=Filter.by_property("file_id").equal(file_id)
@@ -651,7 +882,6 @@ def upload_documents():
 
         # Progress done (o cancelled se interrotto)
         if upload_id:
-            # Controlla se è stato cancellato
             was_cancelled = upload_id in upload_progress and upload_progress[upload_id].get("cancelled", False)
 
             if was_cancelled:
@@ -663,7 +893,7 @@ def upload_documents():
                     "currentFile": "",
                     "cancelled": True
                 }
-                print(f"[Upload] Upload {upload_id} completamente cancellato")
+                print(f"[UPLOAD] Upload {upload_id} completamente cancellato")
             else:
                 upload_progress[upload_id] = {
                     "stage": "done",
@@ -683,7 +913,6 @@ def upload_documents():
             "failedFiles": failed_files,
             "collection": collection_name,
         })
-
     except Exception as e:
         # Progress error
         if upload_id:
@@ -694,7 +923,6 @@ def upload_documents():
                 "percent": 0,
                 "error": str(e)
             }
-        import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
@@ -720,7 +948,6 @@ def cancel_upload():
 
         session = UPLOAD_SESSIONS.get(upload_id)
         if not session:
-            # Se non c'è sessione, elimina solo il progress
             upload_progress.pop(upload_id, None)
             return jsonify({"success": True, "deleted": 0})
 
@@ -734,7 +961,6 @@ def cancel_upload():
             upload_progress.pop(upload_id, None)
             return jsonify({"success": True, "deleted": 0})
 
-        # ELIMINA TUTTI I CHUNK GIÀ CARICATI
         client = init_weaviate_client(host, port)
         collection = client.collections.get(collection_name)
 
@@ -751,7 +977,6 @@ def cancel_upload():
 
         client.close()
 
-        # PULISCI TUTTO
         upload_progress.pop(upload_id, None)
         UPLOAD_SESSIONS.pop(upload_id, None)
 
