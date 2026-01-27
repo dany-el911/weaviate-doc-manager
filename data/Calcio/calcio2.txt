@@ -1,0 +1,16 @@
+*** QUIZ CALCIO - PARTE 2: RECORD E STATISTICHE ***
+
+1. DOMANDA: Quale giocatore detiene il record per il maggior numero di gol segnati in un singolo anno solare?
+   RISPOSTA: Lionel Messi, che nel 2012 ha segnato ben 91 gol tra Barcellona e Argentina.
+
+2. DOMANDA: Qual è il gol più veloce mai segnato in una partita di Coppa del Mondo?
+   RISPOSTA: Hakan Şükür (Turchia) ha segnato dopo soli 11 secondi contro la Corea del Sud nel 2002.
+
+3. DOMANDA: Quale squadra ha vinto il maggior numero di Champions League (ex Coppa dei Campioni)?
+   RISPOSTA: Il Real Madrid.
+
+4. DOMANDA: Chi detiene il record di gol segnati in una singola edizione dei Mondiali?
+   RISPOSTA: Just Fontaine (Francia), che segnò 13 gol nel Mondiale del 1958.
+
+5. DOMANDA: Qual è il portiere con più gol segnati nella storia del calcio?
+   RISPOSTA: Rogério Ceni (Brasile), che ha segnato 131 gol in carriera, principalmente su punizione e rigore.

@@ -1,0 +1,84 @@
+1. QUESTION: What is the difference between "Injury Time" (Stoppage Time) and "Extra Time"?
+ANSWER:
+This is a common confusion. "Injury Time" (or Stoppage Time/Added Time) is the time added by the referee at the end of each 45-minute half (e.g., +3 minutes) to compensate for pauses due to injuries, substitutions, or VAR checks. It is part of the standard 90-minute match.
+"Extra Time," on the other hand, consists of two additional periods of 15 minutes each (30 minutes total). This is played only in knockout competitions (like the World Cup or FA Cup) when the score is level after the full 90 minutes plus injury time. If the score remains tied after Extra Time, the match usually proceeds to a penalty shootout.
+
+2. QUESTION: What is the "Back-pass Rule" and why was it introduced?
+ANSWER:
+Introduced in 1992, this rule forbids goalkeepers from handling the ball (picking it up with their hands) if it has been deliberately kicked to them by a teammate. If a defender passes the ball back with his feet, the keeper must play it with his feet or head.
+If the keeper picks it up, an indirect free kick is awarded to the opponent at the spot of the infraction (often inside the penalty box). The rule was created to stop time-wasting, as teams used to kill time by continuously passing back to the keeper who would hold the ball. Note: Keepers can still pick up the ball if it comes from a teammate's header, chest, or knee (non-foot parts), or if the pass was unintentional (a deflection).
+
+3. QUESTION: What constitutes a "Professional Foul" or DOGSO?
+ANSWER:
+DOGSO stands for "Denial of an Obvious Goal-Scoring Opportunity." Commonly known as a "professional foul," this happens when a defender commits a foul specifically to prevent an opponent who has a clear path to goal from scoring.
+If the foul occurs outside the penalty area, it results in a direct red card.
+If it occurs inside the penalty area, the "Double Jeopardy" rule (modified recently) applies: if the defender made a genuine attempt to play the ball but fouled the opponent, it is a Penalty and a Yellow Card (not Red). However, if the foul was a pull, push, handball, or a cynical tackle with no intent to play the ball, it remains a Penalty and a Red Card.
+
+4. QUESTION: What is a "Hat-trick" and what is a "Perfect Hat-trick"?
+ANSWER:
+A "Hat-trick" occurs when a single player scores three goals in one game. The term originates from cricket (where a bowler would be presented with a hat for taking three wickets with three deliveries).
+A "Perfect Hat-trick" is a specific, rarer achievement where the player scores one goal with their right foot, one with their left foot, and one with their head. In some definitions (especially in Germany/Austria), a "flawless" hat-trick requires scoring all three goals in the same half without any other player scoring in between, but the general English definition focuses on the body parts used.
+
+5. QUESTION: How does the "Advantage Rule" work?
+ANSWER:
+The Advantage Rule allows the referee to let play continue even after a foul has been committed, provided that the team against which the foul was committed retains possession and has a promising attacking opportunity.
+Instead of stopping the game for a free kick (which might allow the defense to reorganize), the referee signals "play on." However, if the anticipated advantage does not materialize within a few seconds (e.g., the player loses the ball immediately), the referee can pull the play back and award the original free kick. Disciplinary sanctions (yellow/red cards) for the initial foul are usually handed out at the next stoppage of play.
+
+6. QUESTION: What does winning "The Treble" mean?
+ANSWER:
+Winning "The Treble" is considered the pinnacle of club football dominance. It means a club wins three major trophies in a single season.
+Specifically, a "Continental Treble" involves winning:
+1) The top domestic league (e.g., Premier League).
+2) The primary domestic cup (e.g., FA Cup).
+3) The top continental trophy (e.g., UEFA Champions League).
+Famous examples include Manchester United (1999), Barcelona (2009, 2015), Inter Milan (2010), and Manchester City (2023). Winning lesser trophies (like the Community Shield or League Cup) typically counts towards a "domestic treble" but carries less prestige than the Continental Treble.
+
+7. QUESTION: What is "Gegenpressing"?
+ANSWER:
+Gegenpressing (German for "counter-pressing") is a tactical philosophy popularized globally by coaches like Jürgen Klopp. The core idea is that the best time to win the ball back is immediately after losing it.
+Instead of falling back into defensive formation when possession is lost, the team swarms the opponent who just recovered the ball. The opponent is likely disorganized and expending energy to control the ball, making them vulnerable. If executed correctly, the team wins the ball back high up the pitch, close to the opponent's goal, creating an immediate scoring chance.
+
+8. QUESTION: What is the purpose of "Goal-line Technology" (GLT)?
+ANSWER:
+Unlike VAR, which relies on video replay and human interpretation, Goal-line Technology is an automated system used solely to determine if the ball has completely crossed the goal line.
+Sensors in the goal frame and high-speed cameras around the stadium track the ball's position in 3D space. If the entire ball crosses the line, the system sends an instantaneous encrypted signal (vibration and visual message "GOAL") to the referee's specialized watch within one second. This eliminates "ghost goals" where a ball crosses the line but is cleared out, invisible to the human eye.
+
+9. QUESTION: How do "Transfer Windows" operate?
+ANSWER:
+Clubs cannot buy or register new players whenever they want. They must wait for specific periods called "Transfer Windows." FIFA mandates two windows per season:
+1) The Summer Window: The longest period (usually 12 weeks), taking place between the end of one season and the start of the next. This is where most major deals happen.
+2) The Winter Window: A shorter period (usually 4 weeks in January) mid-season.
+Free agents (players without a contract) can usually be signed outside these windows, but player transfers between clubs are strictly limited to these times to ensure squad stability during competitions.
+
+10. QUESTION: What is the "Away Goals Rule" and why was it abolished in UEFA competitions?
+ANSWER:
+The Away Goals Rule was a tie-breaker method used in two-legged knockout ties. If the aggregate score was tied (e.g., 2-2 total), the team that scored more goals at the opponent's stadium would advance.
+UEFA abolished this rule starting from the 2021/22 season. The reasoning was that the rule had become counter-productive: home teams were afraid to attack (fearing a costly away goal conceded), and away teams were often too cautious. Furthermore, improved pitch quality and travel logistics reduced the historical disadvantage of playing away. Now, if scores are level on aggregate, the game goes to extra time regardless of who scored where.
+
+11. QUESTION: What is a "Box-to-Box" midfielder?
+ANSWER:
+A "Box-to-Box" midfielder is a player with immense stamina and all-around ability who contributes equally to defense and attack. They operate effectively between their own penalty box (defending, tackling, intercepting) and the opponent's penalty box (scoring, creating chances).
+Unlike a defensive midfielder (who stays back) or a playmaker (who focuses on creativity), the Box-to-Box player does everything. Classic examples include Patrick Vieira, Steven Gerrard, and Lothar Matthäus.
+
+12. QUESTION: What is the "Panenka" penalty?
+ANSWER:
+The "Panenka" is a cheeky technique for taking a penalty kick. Instead of blasting the ball to a corner, the taker gently chips the ball down the center of the goal.
+It relies on the prediction that the goalkeeper will dive to the left or right. If the keeper dives, the ball floats slowly into the empty middle of the net. It is named after Antonín Panenka, who famously used this technique to win the 1976 European Championship for Czechoslovakia against West Germany. It is high-risk: if the keeper stands still, the taker looks foolish as the ball lands gently in the keeper's arms.
+
+13. QUESTION: What are the rules regarding "Simulation" (Diving)?
+ANSWER:
+Simulation is the act of a player feigning injury or pretending to have been fouled to deceive the referee and gain an unfair advantage (like a penalty or free kick).
+Under the Laws of the Game, simulation is considered "unsporting behavior." If the referee spots a dive, play is stopped, the goal/penalty is denied, and the offending player receives a Yellow Card. In some leagues, post-match video review can lead to retrospective bans for players who successfully deceived the referee during the game.
+
+14. QUESTION: Why do teams have "Third Kits"?
+ANSWER:
+Originally, teams had a "Home" kit and an "Away" kit (usually of contrasting colors) to distinguish themselves from opponents. However, situations arise where the Away kit still clashes with the opponent's Home kit (e.g., a team with a Red home kit and Black away kit playing against a team with Red/Black stripes).
+The "Third Kit" resolves these color clashes. In modern football, Third Kits are also significant commercial tools for merchandising, often featuring experimental designs or colors that differ from the club's traditional palette to appeal to fashion trends.
+
+15. QUESTION: What is the role of the "Fourth Official"?
+ANSWER:
+The Fourth Official stands on the sideline between the two technical areas (benches). Their duties include:
+1) Managing substitutions (checking equipment and holding up the board).
+2) Displaying the minimum added injury time on the electronic board.
+3) Maintaining order in the technical areas (ensuring coaches stay within their zones).
+4) Replacing the main referee or an assistant referee if one of them gets injured and cannot continue the match.

@@ -1,0 +1,151 @@
+1. DOMANDA: Come funziona esattamente la regola del fuorigioco (offside)?
+RISPOSTA:
+La regola del fuorigioco è forse la più complessa e discussa del calcio. Un calciatore si trova in posizione di fuorigioco se, nel momento in cui la palla viene giocata o toccata da un suo compagno, una qualsiasi parte del suo corpo (testa, corpo o piedi, escluse le braccia e le mani) si trova nella metà campo avversaria ed è più vicina alla linea di porta rispetto sia al pallone che al penultimo avversario (solitamente l'ultimo difensore, dato che il portiere è l'ultimo uomo).
+Tuttavia, trovarsi in posizione di fuorigioco non è di per sé un'infrazione. Diventa punibile solo se il giocatore viene coinvolto nel gioco attivo. Questo avviene in tre casi principali:
+1) Intervenendo nel gioco (toccando o giocando il pallone passato da un compagno).
+2) Interferendo con un avversario (ostruendo la visuale, contendendo il pallone o facendo azioni che impattano sulla capacità dell'avversario di giocare la palla).
+3) Traendo vantaggio dalla posizione (giocando un pallone che rimbalza da un palo, traversa o da un avversario dopo essere stato in posizione irregolare).
+È importante notare che non c'è fuorigioco se il giocatore riceve la palla direttamente da rimessa laterale, calcio d'angolo o rinvio dal fondo.
+
+2. DOMANDA: Cos'è il VAR e in quali casi specifici può intervenire?
+RISPOSTA:
+Il VAR (Video Assistant Referee) è un sistema di supporto tecnologico introdotto per aiutare l'arbitro in campo a correggere errori "chiari ed evidenti" o a segnalare episodi gravi non visti. Il team VAR, situato in una sala operativa con monitor, comunica con l'arbitro via radio.
+Il protocollo IFAB limita l'uso del VAR a soli quattro casi specifici, chiamati "Game-Changing Situations":
+1) Gol/Non Gol: Verificare se c'era un fallo, un fuorigioco, un tocco di mano o se la palla è uscita dal campo prima della segnatura.
+2) Calcio di rigore/Non calcio di rigore: Controllare se il contatto in area è stato valutato erroneamente (es. simulazione o fallo netto non visto).
+3) Espulsione diretta: Il VAR interviene solo per cartellini rossi diretti (non per le seconde ammonizioni), valutando condotte violente o falli gravi di gioco.
+4) Scambio di identità: Se l'arbitro ammonisce o espelle il giocatore sbagliato.
+L'arbitro può fidarsi della comunicazione del VAR (spesso per fuorigioco fattuale) o andare a rivedere l'azione al monitor a bordo campo (OFR - On Field Review) per decisioni soggettive.
+
+3. DOMANDA: Qual è la differenza tattica tra la marcatura "a uomo" e quella "a zona"?
+RISPOSTA:
+Queste sono le due filosofie difensive principali.
+La marcatura a uomo (tipica del calcio italiano fino agli anni '80) prevede che ogni difensore sia responsabile di un preciso avversario. Il difensore segue l'attaccante ovunque vada, cercando di anticiparlo o annullarlo fisicamente. Il vantaggio è che le responsabilità sono chiare; lo svantaggio è che se l'attaccante è molto mobile, può trascinare il difensore fuori posizione, creando buchi nella difesa. Inoltre, richiede grande dispendio fisico.
+La marcatura a zona (resa celebre dal calcio totale olandese e dal Milan di Sacchi) prevede che i difensori controllino uno spazio specifico del campo, non un uomo. Il difensore attacca chiunque entri nella sua zona di competenza. Quando la palla si sposta, l'intero reparto difensivo si muove all'unisono (scivolamento) per coprire gli spazi e mantenere le distanze corte tra i reparti. Questo sistema favorisce il recupero palla collettivo e il fuorigioco tattico, ma richiede grandissima organizzazione e comunicazione.
+
+4. DOMANDA: Cosa si intende per "Falso Nueve" (Falso Nove)?
+RISPOSTA:
+Il "Falso Nueve" è un ruolo tattico attribuito a un attaccante che, pur indossando teoricamente la maglia numero 9 o schierandosi come centravanti, non opera come una punta classica. Invece di stazionare in area di rigore o giocare spalla alla porta contro i difensori centrali, il "Falso Nove" arretra costantemente verso il centrocampo per ricevere palla.
+Questo movimento ha due scopi devastanti: primo, crea superiorità numerica a centrocampo, permettendo alla squadra di dominare il possesso; secondo, manda in crisi i difensori centrali avversari, che non sanno se seguirlo (lasciando un buco alle loro spalle dove possono inserirsi le ali) o se rimanere in posizione (lasciando l'attaccante libero di girarsi e puntare). Esempi celebri sono Lionel Messi nel Barcellona di Guardiola o Francesco Totti nella Roma di Spalletti.
+
+5. DOMANDA: Come funziona il "Fair Play Finanziario" (FFP) della UEFA?
+RISPOSTA:
+Il Fair Play Finanziario è un insieme di regole introdotte dalla UEFA nel 2011 per migliorare la salute finanziaria dei club europei. L'obiettivo principale non è rendere le squadre uguali, ma impedire che i club spendano più di quanto guadagnano, evitando così fallimenti che danneggerebbero l'intero ecosistema.
+La regola cardine è il "Break-even requirement" (obbligo di pareggio di bilancio): i club non possono avere perdite superiori a una certa soglia (monitorata su periodi di tre anni). Le spese considerate sono quelle per trasferimenti, stipendi e ammortamenti; non contano invece le spese "virtuose" come quelle per stadi, strutture di allenamento o settori giovanili.
+Recentemente, il sistema si è evoluto nel "Financial Sustainability Regulations", introducendo il limite al costo della rosa (squad cost rule), che impone che la spesa per stipendi, trasferimenti e commissioni agli agenti non superi una percentuale fissa (che scenderà gradualmente fino al 70%) dei ricavi totali del club.
+
+6. DOMANDA: Qual è la storia e il significato del "Catenaccio"?
+RISPOSTA:
+Il Catenaccio è il sistema tattico più iconicamente associato al calcio italiano tra gli anni '50 e '70, sebbene le sue origini teoriche siano attribuibili anche allo svizzero Karl Rappan (il "Verrou").
+La caratteristica principale del Catenaccio era l'introduzione del "Libero", un difensore svincolato da compiti di marcatura che giocava alle spalle della linea difensiva. Mentre gli altri difensori marcavano a uomo, il Libero interveniva per spazzare via il pallone o chiudere su chiunque superasse la prima linea.
+In fase offensiva, il Catenaccio si basava sul contropiede: si lasciava l'iniziativa all'avversario, ci si chiudeva ermeticamente in difesa e, appena recuperata palla, si lanciava lungo per gli attaccanti veloci nello spazio aperto. Allenatori come Nereo Rocco (al Padova e al Milan) e Helenio Herrera (nella Grande Inter) resero questo stile vincente in tutto il mondo, anche se spesso criticato per essere eccessivamente difensivista.
+
+7. DOMANDA: Quando un tocco di mano è considerato fallo e quando no?
+RISPOSTA:
+Questa regola è stata modificata molte volte per ridurre la discrezionalità. Attualmente, è fallo di mano se:
+1) Il giocatore tocca deliberatamente il pallone con mano/braccio (movimento verso la palla).
+2) Il giocatore tocca la palla aumentando innaturalmente il volume del proprio corpo. Si considera "innaturale" quando la posizione del braccio non è giustificata dal movimento del corpo in quella specifica azione (es. braccia larghe a croce o sopra la testa).
+3) Un giocatore segna un gol direttamente con la mano/braccio, anche se in modo accidentale, o segna subito dopo che la palla ha toccato la sua mano/braccio (anche accidentalmente).
+NON è solitamente considerato fallo se il pallone colpisce il braccio che è vicino al corpo, se il braccio è usato per sostenere il corpo cadendo a terra (senza estenderlo lateralmente), o se la palla proviene da una deviazione ravvicinata di un altro giocatore e non c'è tempo per reagire, purché la posizione del braccio sia congrua al movimento.
+
+8. DOMANDA: Come vengono calcolati i punti nel Ranking FIFA e a cosa serve?
+RISPOSTA:
+Il Ranking FIFA è una classifica mondiale delle nazionali maschili. Dal 2018, utilizza un sistema di calcolo chiamato "SUM", basato su un modello matematico Elo (usato negli scacchi).
+Invece di fare una media dei punti in un periodo di tempo, il sistema aggiunge o sottrae punti al totale di una squadra dopo ogni singola partita. La formula considera:
+- Il risultato della partita (vittoria, pareggio, sconfitta).
+- L'importanza del match (un'amichevole vale molto meno di una gara di Coppa del Mondo).
+- La forza relativa dell'avversario (vincere contro la prima in classifica dà molti più punti che vincere contro la centesima).
+Il Ranking è fondamentale perché determina le "teste di serie" nei sorteggi per i Mondiali e le competizioni continentali. Essere testa di serie permette di evitare le squadre più forti nei gironi iniziali.
+
+9. DOMANDA: Chi ha inventato il calcio moderno e quali erano le prime regole?
+RISPOSTA:
+Sebbene giochi con la palla esistessero in Cina (Cuju), Grecia e Roma antica, il calcio moderno è nato in Inghilterra. La data di nascita ufficiale è il 26 ottobre 1863, quando, presso la Freemason's Tavern di Londra, si riunirono i rappresentanti di vari club e scuole per fondare la Football Association (FA).
+Lo scopo era unificare le regole, poiché all'epoca ogni scuola giocava a modo suo (alcune permettevano l'uso delle mani, stile rugby). Le prime regole del 1863 proibivano di correre con la palla in mano e di colpire gli avversari sugli stinchi (hacking). Curiosamente, all'inizio non c'era la traversa (solo due pali), non esistevano i portieri come ruolo distinto (tutti potevano provare a parare), e il fuorigioco era molto severo (chiunque fosse davanti alla palla era in offside). Il calcio si è poi diffuso globalmente grazie ai marinai e commercianti britannici.
+
+10. DOMANDA: Cos'è la Legge Bosman e come ha cambiato il calciomercato?
+RISPOSTA:
+La sentenza Bosman è una decisione della Corte di Giustizia dell'Unione Europea del 1995 che ha rivoluzionato l'economia del calcio. Prende il nome dal calciatore belga Jean-Marc Bosman, che fece causa al suo club (RFC Liegi) perché gli impediva di trasferirsi al Dunkerque alla scadenza del contratto, chiedendo una somma di denaro.
+La sentenza stabilì due principi fondamentali:
+1) Libertà di trasferimento a fine contratto: I calciatori in scadenza di contratto sono liberi di firmare per un altro club senza che il vecchio club riceva alcun indennizzo (i cosiddetti "parametri zero").
+2) Abolizione del tetto agli stranieri comunitari: Fino ad allora, i club potevano schierare solo un numero limitato di stranieri (es. massimo 3). La Corte stabilì che questo violava la libera circolazione dei lavoratori nell'UE. Da quel momento, i club poterono acquistare un numero illimitato di giocatori con passaporto comunitario.
+
+11. DOMANDA: Qual è la differenza tra Champions League ed Europa League?
+RISPOSTA:
+Sono le due principali competizioni continentali per club organizzate dalla UEFA, ma differiscono per prestigio, criteri di accesso ed introiti economici.
+La UEFA Champions League è il torneo più prestigioso al mondo per club. Vi accedono le squadre meglio classificate nei campionati nazionali più importanti (es. le prime 4 in Italia, Inghilterra, Spagna, ecc.). Il livello tecnico è il più alto in assoluto e i premi in denaro sono astronomici.
+La UEFA Europa League è la seconda competizione. Vi accedono le vincitrici delle coppe nazionali e le squadre piazzatesi subito dietro quelle qualificate per la Champions (es. 5° e 6° posto). Spesso accoglie anche le squadre eliminate nella prima fase della Champions League (terze classificate nei gironi). Sebbene il livello sia cresciuto, è economicamente e mediaticamente inferiore alla "sorella maggiore". Esiste ora anche una terza coppa, la Conference League.
+
+12. DOMANDA: Come si esegue correttamente un calcio di rigore secondo il regolamento?
+RISPOSTA:
+L'esecuzione del rigore segue regole rigidissime.
+Il pallone deve essere posizionato fermo sul dischetto (a 11 metri dalla porta). Il tiratore deve essere chiaramente identificato.
+Il portiere deve rimanere sulla linea di porta, fronteggiando il tiratore, tra i pali, senza toccare pali, traversa o rete finché il pallone non è calciato. Al momento del tiro, il portiere deve avere almeno una parte di un piede sulla linea di porta (o in linea con essa se sollevato).
+Tutti gli altri giocatori, eccetto tiratore e portiere, devono stare fuori dall'area di rigore, dietro la linea del dischetto e distanti almeno 9,15 metri dalla palla.
+Il tiratore non può toccare la palla una seconda volta dopo aver tirato, a meno che questa non sia stata toccata da un altro giocatore (quindi se colpisce il palo e torna indietro, il tiratore non può ribadire in rete; se il portiere la tocca, sì). È vietato fermarsi completamente durante la rincorsa per ingannare il portiere (la "paradinha" eccessiva), ma è consentito rallentare.
+
+13. DOMANDA: Cos'è il "Tiki-Taka"?
+RISPOSTA:
+Il Tiki-Taka è uno stile di gioco caratterizzato da passaggi corti, rapidi e continui, finalizzato al mantenimento del possesso palla per lunghi tratti della partita. L'obiettivo non è solo difendersi tenendo la palla lontano dagli avversari, ma disordinare la struttura difensiva avversaria attraverso il movimento costante dei giocatori e della sfera, aspettando il momento giusto per l'imbucata verticale.
+Le radici affondano nel "Calcio Totale" olandese di Johan Cruyff, ma la sua massima espressione si è avuta con il Barcellona di Pep Guardiola (2008-2012) e la nazionale spagnola campione del mondo 2010. I protagonisti chiave erano centrocampisti come Xavi e Iniesta, maestri nel gestire la palla in spazi stretti. Il termine è onomatopeico, richiamando il suono ritmico dei passaggi costanti.
+
+14. DOMANDA: Perché esistono i cartellini giallo e rosso e chi li ha inventati?
+RISPOSTA:
+I cartellini furono introdotti per superare le barriere linguistiche. L'idea venne all'arbitro inglese Ken Aston. Durante i Mondiali del 1966, nella partita Inghilterra-Argentina, ci fu grande confusione perché un giocatore argentino non capiva di essere stato espulso verbalmente dall'arbitro tedesco, e due inglesi non sapevano di essere stati ammoniti.
+Guidando e vedendo un semaforo, Aston ebbe l'illuminazione: "Giallo per attenzione/calma, Rosso per stop/fuori".
+Il sistema fu introdotto ai Mondiali del 1970.
+- Cartellino Giallo (Ammonizione): Comportamento antisportivo, proteste, falli imprudenti, perdita di tempo. Due gialli nella stessa gara portano al rosso.
+- Cartellino Rosso (Espulsione): Falli gravi di gioco, condotta violenta, sputi, impedire un gol con la mano, insulti gravi. Il giocatore espulso deve lasciare il campo e la sua squadra resta in dieci.
+
+15. DOMANDA: Cosa significa il ruolo del "Trequartista" o "Numero 10"?
+RISPOSTA:
+Il trequartista (o fantasista) è il giocatore che opera nella zona tra il centrocampo e l'attacco ("tre quarti" di campo). È tradizionalmente il giocatore più tecnico della squadra, colui che indossa la maglia numero 10 (come Maradona, Baggio, Platini, Zidane).
+Il suo compito principale è legare il gioco: ricevere palla dai mediani, girarsi e inventare l'assist decisivo per gli attaccanti. Deve possedere visione di gioco, dribbling e un ottimo tiro da fuori.
+Nel calcio moderno, il trequartista "classico" (statico e poco propenso a difendere) è quasi scomparso, sostituito da trequartisti dinamici che pressano alto o da esterni che si accentrano. Tuttavia, la capacità di trovare lo spazio "tra le linee" avversarie rimane una delle doti più ricercate.
+
+16. DOMANDA: Quali sono le dimensioni regolamentari di un campo da calcio?
+RISPOSTA:
+Le dimensioni del campo da calcio non sono fisse, ma devono rientrare in un range stabilito dalla IFAB (International Football Association Board).
+Per le partite standard:
+- Lunghezza (linea laterale): Minimo 90 metri, Massimo 120 metri.
+- Larghezza (linea di porta): Minimo 45 metri, Massimo 90 metri.
+Tuttavia, per le partite internazionali (come Mondiali o Champions League), le misure sono molto più rigide:
+- Lunghezza: Minimo 100 metri, Massimo 110 metri.
+- Larghezza: Minimo 64 metri, Massimo 75 metri.
+La misura "standard" raccomandata dalla FIFA per i nuovi stadi e per i grandi eventi è 105 metri di lunghezza per 68 metri di larghezza. Il campo deve essere rettangolare e segnato con linee continue.
+
+17. DOMANDA: Chi assegna il Pallone d'Oro e quali sono i criteri?
+RISPOSTA:
+Il Pallone d'Oro (Ballon d'Or) è il premio individuale più prestigioso, assegnato dalla rivista francese France Football dal 1956.
+Inizialmente era riservato solo ai giocatori europei, poi esteso a chiunque giocasse in Europa (1995) e infine a tutti i giocatori del mondo (2007).
+Il premio viene assegnato sulla base dei voti di una giuria composta da giornalisti specializzati (uno per nazione, per le prime 100 nazioni del ranking FIFA).
+I criteri di valutazione sono, in ordine di importanza:
+1) Prestazioni individuali e carattere decisivo e impressionante dei contendenti.
+2) Prestazioni collettive e trofei vinti (titoli nazionali e internazionali).
+3) Classe del giocatore e senso del fair play.
+Il periodo di valutazione ora coincide con la stagione sportiva europea (agosto-luglio) e non più con l'anno solare.
+
+18. DOMANDA: Cosa si intende per "Derby" nel calcio?
+RISPOSTA:
+Il termine "Derby" indica una partita giocata tra due squadre della stessa città o della stessa regione, caratterizzata da una rivalità storica e accesa. Il nome deriva probabilmente dalla città di Derby in Inghilterra o dalla classica corsa di cavalli fondata dal Conte di Derby.
+Queste partite sono spesso le più sentite dai tifosi, indipendentemente dalla classifica.
+Esempi celebri sono:
+- Derby della Madonnina (Milan vs Inter).
+- Derby della Capitale (Roma vs Lazio).
+- Derby d'Italia (Juventus vs Inter - in questo caso la rivalità non è cittadina ma nazionale, tra le due squadre storicamente più vincenti).
+- Old Firm (Celtic vs Rangers a Glasgow), che mescola calcio, religione e politica.
+- El Clásico (Barcellona vs Real Madrid) non è un derby cittadino, ma rappresenta la massima rivalità spagnola.
+
+19. DOMANDA: Quali sono i compiti e i poteri del Capitano di una squadra?
+RISPOSTA:
+Il Capitano è il leader in campo, identificabile dalla fascia al braccio. Sebbene nell'immaginario collettivo abbia grandi poteri, il regolamento ufficiale gliene attribuisce pochi e specifici:
+- Partecipa al sorteggio iniziale (lancio della monetina) per decidere palla o campo.
+- Partecipa al sorteggio per i calci di rigore finali.
+- È il punto di riferimento per l'arbitro per mantenere la disciplina dei compagni (anche se non ha alcun diritto speciale di protestare, contrariamente a quanto si crede; anzi, rischia il giallo come gli altri).
+Tuttavia, il suo ruolo "morale" e tattico è immenso: deve motivare la squadra, calmare gli animi, comunicare le variazioni tattiche dell'allenatore e rappresentare il club nelle interviste e nelle relazioni con i tifosi.
+
+20. DOMANDA: Qual è la differenza tra "Calcio d'Angolo", "Rimessa dal Fondo" e "Rimessa Laterale"?
+RISPOSTA:
+Sono i tre modi per riprendere il gioco quando la palla esce dal campo.
+- Rimessa Laterale: Si assegna quando la palla esce interamente dalle linee laterali. Viene battuta con le mani dalla squadra avversaria a chi ha toccato per ultimo la palla. Il giocatore deve avere entrambi i piedi a terra (o fuori o sulla linea) e lanciare la palla da dietro la testa e sopra di essa. Non si può segnare direttamente da rimessa laterale.
+- Calcio d'Angolo (Corner): Si assegna quando la palla esce dalla linea di porta (ma non è gol) dopo essere stata toccata per ultimo da un difensore o dal portiere. Si batte con i piedi dall'angolo del campo. È possibile segnare direttamente ("gol olimpico") e non esiste fuorigioco.
+- Rimessa dal Fondo: Si assegna quando la palla esce dalla linea di porta dopo essere stata toccata per ultimo da un attaccante avversario. Viene battuta dal portiere (o un difensore) dall'interno dell'area piccola. La palla è in gioco appena viene calciata e si muove.
