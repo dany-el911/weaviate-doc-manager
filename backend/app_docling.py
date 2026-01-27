@@ -5,6 +5,7 @@ import tempfile
 import time
 import traceback
 import uuid
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List
@@ -590,6 +591,17 @@ def upload_documents():
 
         total_files = len(files)
 
+        # Salva i file temporaneamente
+        temp_files = []
+        for file in files:
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix)
+            file.save(tmp.name)
+            temp_files.append({
+                'path': tmp.name,
+                'filename': file.filename
+            })
+            tmp.close()
+
         # Progress init
         if upload_id:
             upload_progress[upload_id] = {
@@ -598,7 +610,7 @@ def upload_documents():
                 "total": total_files,
                 "percent": 0,
                 "currentFile": "",
-                "cancelled": False  # Flag per cancellazione
+                "cancelled": False
             }
 
             UPLOAD_SESSIONS[upload_id] = {
@@ -608,6 +620,38 @@ def upload_documents():
                 "file_ids": [],
             }
 
+        # Avvia processing in background
+        thread = threading.Thread(
+            target=process_files_docling_background,
+            args=(upload_id, collection_name, config, temp_files, total_files)
+        )
+        thread.daemon = True
+        thread.start()
+
+        # Rispondi immediatamente
+        return jsonify({
+            "success": True,
+            "message": "Upload avviato",
+            "uploadId": upload_id
+        })
+
+    except Exception as e:
+        # Progress error
+        if upload_id:
+            upload_progress[upload_id] = {
+                "stage": "error",
+                "current": 0,
+                "total": 0,
+                "percent": 0,
+                "error": str(e),
+                "cancelled": False
+            }
+        return jsonify({'error': str(e)}), 500
+
+
+def process_files_docling_background(upload_id, collection_name, config, temp_files, total_files):
+    """Processa i file in background usando Docling"""
+    try:
         # Tokenizer coerente con modello embedding
         embed_model = config["embedModel"]
         tokenizer = get_tokenizer(embed_model)
@@ -627,8 +671,11 @@ def upload_documents():
             '.jpg', '.jpeg', '.png', '.tiff', '.tif', '.bmp'
         ]
 
-        for file_idx, file in enumerate(files):
-            print(f"[UPLOAD] Inizio elaborazione file {file_idx+1}/{total_files}: {file.filename}")
+        for file_idx, temp_file in enumerate(temp_files):
+            tmp_path = temp_file['path']
+            filename = temp_file['filename']
+            
+            print(f"[UPLOAD] Inizio elaborazione file {file_idx+1}/{total_files}: {filename}")
 
             # CONTROLLA SE UPLOAD È STATO CANCELLATO
             if upload_id and upload_id in upload_progress:
@@ -637,7 +684,7 @@ def upload_documents():
                     break
 
             file_id = str(uuid.uuid4())
-            title = Path(file.filename).stem
+            title = Path(filename).stem
 
             # Progress: file corrente
             if upload_id:
@@ -646,24 +693,20 @@ def upload_documents():
                     "current": file_idx,
                     "total": total_files,
                     "percent": int((file_idx / total_files) * 100),
-                    "currentFile": file.filename,
+                    "currentFile": filename,
                     "cancelled": False
                 }
 
-            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp:
-                file.save(tmp.name)
-                tmp_path = tmp.name
-
             try:
                 # Verifica formato supportato
-                if not any(file.filename.lower().endswith(ext) for ext in supported_extensions):
+                if not any(filename.lower().endswith(ext) for ext in supported_extensions):
                     failed_files.append({
-                        "filename": file.filename,
+                        "filename": filename,
                         "error": "Formato non supportato (usa PDF, DOCX, PPTX, HTML, TXT o immagini)",
                     })
                     continue
 
-                doc_type = Path(file.filename).suffix[1:]
+                doc_type = Path(filename).suffix[1:]
 
                 # Ottieni preset chunking (default: balanced)
                 preset_name = config.get('ingestPreset', 'balanced')
@@ -673,7 +716,7 @@ def upload_documents():
                     f"[Upload] Using chunking preset: {preset_name} (max_tokens={preset['max_tokens']}, overlap={preset['overlap_tokens']})")
 
                 # Estrazione con Docling + chunking intelligente con overlap
-                print(f"[UPLOAD] Estrazione e chunking del file: {file.filename}")
+                print(f"[UPLOAD] Estrazione e chunking del file: {filename}")
                 blocks = extract_with_docling(
                     tmp_path,
                     tokenizer=tokenizer,
@@ -685,7 +728,7 @@ def upload_documents():
 
                 if not blocks:
                     failed_files.append({
-                        "filename": file.filename,
+                        "filename": filename,
                         "error": "Nessun contenuto estratto (file vuoto o corrotto?)",
                     })
                     continue
@@ -697,7 +740,7 @@ def upload_documents():
                 min_chunk_size = min(chunk_sizes) if chunk_sizes else 0
                 max_chunk_size = max(chunk_sizes) if chunk_sizes else 0
 
-                print(f"[Upload] CHUNK STATS - File: {file.filename}")
+                print(f"[Upload] CHUNK STATS - File: {filename}")
                 print(f"  Total chunks: {total_chunks}")
                 print(f"  Avg size: {avg_chunk_size:.0f} chars")
                 print(f"  Min size: {min_chunk_size} chars")
@@ -721,7 +764,7 @@ def upload_documents():
                 except Exception:
                     detected_lang = "unknown"
 
-                print(f"[Upload] File: {file.filename} - Chunks: {len(blocks)} - Lang: {detected_lang}")
+                print(f"[Upload] File: {filename} - Chunks: {len(blocks)} - Lang: {detected_lang}")
 
                 # AGGIUNGI file_id SUBITO alla sessione
                 if upload_id and upload_id in UPLOAD_SESSIONS:
@@ -750,7 +793,7 @@ def upload_documents():
                             "current": file_idx,
                             "total": total_files,
                             "percent": int(overall_progress * 100),
-                            "currentFile": f"{file.filename} (embedding batch {batch_num}/{total_batches})",
+                            "currentFile": f"{filename} (embedding batch {batch_num}/{total_batches})",
                             "cancelled": False
                         }
 
@@ -780,7 +823,7 @@ def upload_documents():
                         "current": file_idx,
                         "total": total_files,
                         "percent": int(overall_progress * 100),
-                        "currentFile": f"{file.filename} (inserting chunks...)",
+                        "currentFile": f"{filename} (inserting chunks...)",
                         "cancelled": False
                     }
 
@@ -837,7 +880,7 @@ def upload_documents():
                                     "current": file_idx,
                                     "total": total_files,
                                     "percent": int(overall_progress * 100),
-                                    "currentFile": f"{file.filename} (chunk {inserted_count}/{total_chunks})",
+                                    "currentFile": f"{filename} (chunk {inserted_count}/{total_chunks})",
                                     "cancelled": False
                                 }
                             if inserted_count % 10 == 0 or inserted_count == total_chunks:
@@ -846,10 +889,10 @@ def upload_documents():
                             print(f"[UPLOAD] Errore durante inserimento chunk: {e}")
                             raise
 
-                print(f"[UPLOAD] Inserimento completato: {inserted_count} chunk inseriti per il file {file.filename}")
+                print(f"[UPLOAD] Inserimento completato: {inserted_count} chunk inseriti per il file {filename}")
 
                 processed_files += 1
-                uploaded_files.append(file.filename)
+                uploaded_files.append(filename)
 
             except Exception as file_error:
                 if "Upload cancellato" in str(file_error):
@@ -873,7 +916,7 @@ def upload_documents():
                     friendly_msg = raw_msg
 
                 failed_files.append({
-                    "filename": file.filename,
+                    "filename": filename,
                     "error": friendly_msg,
                 })
 
@@ -906,13 +949,12 @@ def upload_documents():
 
         client.close()
 
-        return jsonify({
-            "success": len(failed_files) == 0,
-            "processedFiles": processed_files,
-            "uploadedFiles": uploaded_files,
-            "failedFiles": failed_files,
-            "collection": collection_name,
-        })
+        print(f"[UPLOAD] Background processing completato:")
+        print(f"  - Processati: {processed_files}")
+        print(f"  - Caricati con successo: {uploaded_files}")
+        print(f"  - Falliti: {failed_files}")
+        print(f"  - Collection: {collection_name}")
+
     except Exception as e:
         # Progress error
         if upload_id:
@@ -924,7 +966,7 @@ def upload_documents():
                 "error": str(e)
             }
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        print(f"[UPLOAD ERROR] {str(e)}")
 
 
 @app.route("/api/cancel-upload", methods=["POST"])
