@@ -1,19 +1,23 @@
 import json
 import os
+import platform
 import re
 import tempfile
 import time
 import traceback
 import uuid
 import threading
+import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List
 from urllib.parse import urlparse, urlunparse
 
-import requests
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from langdetect import detect
+from PIL import Image, ImageEnhance, ImageFilter
+from transformers import AutoTokenizer
 
 import weaviate
 from weaviate.classes.config import Configure, DataType, Property
@@ -22,9 +26,6 @@ from weaviate.classes.query import Filter
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions, TesseractCliOcrOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
-from langdetect import detect
-from PIL import Image, ImageEnhance, ImageFilter
-from transformers import AutoTokenizer
 
 app = Flask(__name__)
 CORS(app)
@@ -45,11 +46,19 @@ INGEST_PRESETS = {
     "long_context": {"max_tokens": 2048, "overlap_tokens": 192},
 }
 
+# Stopwords inglesi da rimuovere per disattivare lo stopwording
+ENGLISH_STOPWORDS = [
+    "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "if", "in",
+    "into", "is", "it", "no", "not", "of", "on", "or", "such", "that", "the",
+    "their", "then", "there", "these", "they", "this", "to", "was", "will", "with"
+]
 
 _TOKENIZER_CACHE: Dict[str, Any] = {}
+_OLLAMA_ENDPOINT_CACHE: Dict[str, str] = {}
 
 # Assicurati che il processo Python veda Tesseract
 os.environ["PATH"] = "/usr/local/bin:" + os.environ.get("PATH", "")
+
 
 def _build_pdf_converter(*, do_ocr: bool) -> DocumentConverter:
     po = PdfPipelineOptions()
@@ -62,6 +71,7 @@ def _build_pdf_converter(*, do_ocr: bool) -> DocumentConverter:
     return DocumentConverter(
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=po)}
     )
+
 
 # Due converter: uno veloce (no OCR) e uno fallback (OCR)
 doc_converter_no_ocr = _build_pdf_converter(do_ocr=False)
@@ -232,10 +242,102 @@ def chunk_text_token_based(
     return [normalize_text(c).strip() for c in out if c and c.strip()]
 
 
+def _is_running_in_docker() -> bool:
+    return os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv")
+
+
+def _normalize_ollama_endpoint(ollama_endpoint: str) -> str:
+    if not ollama_endpoint:
+        ollama_endpoint = "http://localhost:11434"
+
+    cached = _OLLAMA_ENDPOINT_CACHE.get(ollama_endpoint)
+    if cached:
+        return cached
+
+    parsed = urlparse(ollama_endpoint)
+
+    if parsed.hostname not in ("localhost", "127.0.0.1"):
+        _OLLAMA_ENDPOINT_CACHE[ollama_endpoint] = ollama_endpoint
+        return ollama_endpoint
+
+    if not _is_running_in_docker():
+        _OLLAMA_ENDPOINT_CACHE[ollama_endpoint] = ollama_endpoint
+        return ollama_endpoint
+
+    try:
+        docker_internal_url = "http://ollama:11434"
+        response = requests.get(f"{docker_internal_url}/api/tags", timeout=1)
+        if response.ok:
+            _OLLAMA_ENDPOINT_CACHE[ollama_endpoint] = docker_internal_url
+            return docker_internal_url
+    except Exception:
+        pass
+
+    port = parsed.port or 11434
+    system = platform.system().lower()
+
+    if system in ("darwin", "windows"):
+        netloc = f"host.docker.internal:{port}"
+    else:
+        gateway_ip = os.environ.get("DOCKER_GATEWAY_IP", "172.17.0.1")
+        netloc = f"{gateway_ip}:{port}"
+
+    normalized = urlunparse(
+        (
+            parsed.scheme or "http",
+            netloc,
+            parsed.path or "",
+            parsed.params,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+    _OLLAMA_ENDPOINT_CACHE[ollama_endpoint] = normalized
+    return normalized
+
+
+def _normalize_ollama_endpoint_for_weaviate(url: str) -> str:
+    if not url:
+        url = "http://localhost:11434"
+
+    cached = _OLLAMA_ENDPOINT_CACHE.get(f"weaviate::{url}")
+    if cached:
+        return cached
+
+    parsed = urlparse(url)
+
+    if parsed.hostname not in ("localhost", "127.0.0.1"):
+        _OLLAMA_ENDPOINT_CACHE[f"weaviate::{url}"] = url
+        return url
+
+    port = parsed.port or 11434
+    system = platform.system().lower()
+
+    if system in ("darwin", "windows"):
+        netloc = f"host.docker.internal:{port}"
+    else:
+        gateway_ip = os.environ.get("DOCKER_GATEWAY_IP", "172.17.0.1")
+        netloc = f"{gateway_ip}:{port}"
+
+    normalized = urlunparse(
+        (
+            parsed.scheme or "http",
+            netloc,
+            parsed.path or "",
+            parsed.params,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+    _OLLAMA_ENDPOINT_CACHE[f"weaviate::{url}"] = normalized
+    return normalized
+
+
 def get_ollama_embedding(text: str, ollama_url: str, model: str) -> list[float]:
     """
     Genera embedding tramite Ollama.
     """
+    ollama_url = _normalize_ollama_endpoint(ollama_url)
     print(f"EMBEDDING REQUEST: url={ollama_url}, model={model}, text_len={len(text)}")
     payload = {"model": model, "prompt": text}
     try:
@@ -252,11 +354,11 @@ def get_ollama_embedding(text: str, ollama_url: str, model: str) -> list[float]:
 
 
 def get_ollama_embeddings_batch(
-    texts: List[str],
-    ollama_url: str,
-    model: str,
-    batch_size: int = 10,
-    progress_callback=None
+        texts: List[str],
+        ollama_url: str,
+        model: str,
+        batch_size: int = 10,
+        progress_callback=None
 ) -> List[list[float]]:
     """
     Genera embedding in batch per velocizzare il processing.
@@ -271,6 +373,7 @@ def get_ollama_embeddings_batch(
     Returns:
         Lista di embedding (uno per testo)
     """
+    ollama_url = _normalize_ollama_endpoint(ollama_url)
     embeddings = []
     total = len(texts)
 
@@ -370,6 +473,7 @@ def doc_to_clean_text(doc) -> str:
             print(f"[Docling] export_to_markdown failed: {e}")
 
     return full_text_local
+
 
 def extract_with_docling(
         file_path: str,
@@ -491,67 +595,50 @@ def get_upload_progress(upload_id: str):
 @app.route('/api/create-collection', methods=['POST'])
 def create_collection():
     """Crea una nuova collezione in Weaviate"""
+    client = None
     try:
         data = request.get_json(force=True)
         collection_name = data['name']
         config = data['config']
+        force_recreate = bool(data.get('force_recreate', False))
+        auto_recreate = bool(data.get('auto_recreate', True))
+
+        print(f"[create-collection] name={collection_name}")
+        print(f"[create-collection] config={config}")
+        print(f"[create-collection] force_recreate={force_recreate}")
+        print(f"[create-collection] auto_recreate={auto_recreate}")
 
         client = init_weaviate_client(
             config['weaviateHost'],
             config['weaviatePort']
         )
 
-        if collection_name in client.collections.list_all():
-            client.close()
-            return jsonify({'error': 'Collection already exists'}), 400
-
-        # ✅ Endpoint Ollama con parsing URL corretto
-        ollama_endpoint = config.get('ollamaUrl', 'http://host.docker.internal:11434')
-
-        # Parse e conversione intelligente localhost → host.docker.internal
-        parsed = urlparse(ollama_endpoint)
-        if parsed.hostname in ['localhost', '127.0.0.1']:
-            parsed = parsed._replace(netloc=f'host.docker.internal:{parsed.port or 11434}')
-            ollama_endpoint = urlunparse(parsed)
-
-        client.collections.create(
-            name=collection_name,
-            properties=[
-                Property(name="title", data_type=DataType.TEXT,
-                         description="Original document name"),
-                Property(name="file_id", data_type=DataType.TEXT,
-                         description="Internal unique id for this file (per upload)."),
-                Property(name="chunk_index", data_type=DataType.INT,
-                         description="Chunk index"),
-                Property(name="doc_type", data_type=DataType.TEXT,
-                         description="Document type"),
-                Property(name="content", data_type=DataType.TEXT,
-                         description="Document content (chunk)"),
-                Property(name="lang", data_type=DataType.TEXT,
-                         description="Detected language"),
-                Property(name="page", data_type=DataType.INT,
-                         description="Document page number"),
-                Property(name="block_kind", data_type=DataType.TEXT,
-                         description="Chunk type (docling_chunk)"),
-            ],
-            vectorizer_config=Configure.Vectorizer.text2vec_ollama(
-                model=config.get('embedModel', 'qwen3-embedding:4b'),
-                api_endpoint=ollama_endpoint,  # ← URL corretto
-                vectorize_collection_name=True
-            ),
+        status = _ensure_collection_ready(
+            client,
+            collection_name,
+            config,
+            force_recreate=force_recreate,
+            auto_recreate=auto_recreate,
         )
 
-        client.close()
-        return jsonify({'success': True, 'collection': collection_name})
+        if status == "exists":
+            return jsonify({'error': 'Collection already exists'}), 400
+
+        return jsonify({'success': True, 'collection': collection_name, 'status': status})
 
     except Exception as e:
+        print(f"[create-collection] ERROR: {e}")
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
-
+    finally:
+        if client is not None:
+            client.close()
 
 
 @app.route('/api/delete-collection', methods=['POST'])
 def delete_collection():
     """Elimina una collezione Weaviate (schema + dati)."""
+    client = None
     try:
         data = request.get_json(force=True)
         collection_name = data["name"]
@@ -560,16 +647,17 @@ def delete_collection():
 
         existing = client.collections.list_all()
         if collection_name not in existing:
-            client.close()
             return jsonify({"error": "Collection not found"}), 404
 
         client.collections.delete(collection_name)
 
-        client.close()
         return jsonify({"success": True, "collection": collection_name})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        if client is not None:
+            client.close()
 
 
 @app.route('/api/upload-documents', methods=['POST'])
@@ -584,6 +672,25 @@ def upload_documents():
             config = json.loads(config_str)
         except Exception:
             config = eval(config_str)
+
+        # NON normalizziamo ollamaUrl qui perché il backend Flask gira sull'host
+        # e deve usare localhost:11434 direttamente, non host.docker.internal
+        # Solo Weaviate (in Docker) ha bisogno di http://ollama:11434
+
+        # Auto-ricrea se endpoint/stopwords non sono corretti
+        auto_recreate = bool(config.get('auto_recreate', True))
+        if auto_recreate:
+            client = init_weaviate_client(config['weaviateHost'], config['weaviatePort'])
+            try:
+                _ensure_collection_ready(
+                    client,
+                    collection_name,
+                    config,
+                    force_recreate=False,
+                    auto_recreate=True,
+                )
+            finally:
+                client.close()
 
         files = request.files.getlist('files')
         if not files:
@@ -674,8 +781,8 @@ def process_files_docling_background(upload_id, collection_name, config, temp_fi
         for file_idx, temp_file in enumerate(temp_files):
             tmp_path = temp_file['path']
             filename = temp_file['filename']
-            
-            print(f"[UPLOAD] Inizio elaborazione file {file_idx+1}/{total_files}: {filename}")
+
+            print(f"[UPLOAD] Inizio elaborazione file {file_idx + 1}/{total_files}: {filename}")
 
             # CONTROLLA SE UPLOAD È STATO CANCELLATO
             if upload_id and upload_id in upload_progress:
@@ -1032,18 +1139,21 @@ def cancel_upload():
 @app.route('/api/collections', methods=['GET'])
 def get_collections():
     """Ottieni lista collezioni"""
+    client = None
     try:
         host = request.args.get('host', '127.0.0.1')
         port = request.args.get('port', '8080')
 
         client = init_weaviate_client(host, port)
         collections = client.collections.list_all()
-        client.close()
 
         return jsonify({'collections': [{'name': col} for col in collections]})
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    finally:
+        if client is not None:
+            client.close()
 
 
 @app.route('/health', methods=['GET'])
@@ -1056,15 +1166,123 @@ def health():
 def debug_count(collection_name):
     host = request.args.get("host", "127.0.0.1")
     port = request.args.get("port", "8080")
-    client = init_weaviate_client(host, port)
-    col = client.collections.get(collection_name)
+    client = None
+    try:
+        client = init_weaviate_client(host, port)
+        col = client.collections.get(collection_name)
 
-    print(f"[Debug] Counting collection: {collection_name}")
+        print(f"[Debug] Counting collection: {collection_name}")
 
-    res = col.aggregate.over_all(total_count=True)
-    client.close()
-    return jsonify({"collection": collection_name, "total_count": res.total_count})
+        res = col.aggregate.over_all(total_count=True)
+        return jsonify({"collection": collection_name, "total_count": res.total_count})
+    finally:
+        if client is not None:
+            client.close()
+
+
+def _has_localhost_endpoint(cfg) -> bool:
+    if cfg.vectorizer_config and cfg.vectorizer_config.model:
+        endpoint = getattr(cfg.vectorizer_config.model, "api_endpoint", None)
+        if endpoint and ("localhost" in endpoint or "127.0.0.1" in endpoint):
+            return True
+    if cfg.vector_config:
+        for _, vec_cfg in cfg.vector_config.items():
+            if hasattr(vec_cfg, "vectorizer") and vec_cfg.vectorizer:
+                model = vec_cfg.vectorizer.model
+                endpoint = getattr(model, "api_endpoint", None) if model else None
+                if endpoint and ("localhost" in endpoint or "127.0.0.1" in endpoint):
+                    return True
+    return False
+
+
+def _stopwords_disabled(cfg) -> bool:
+    sw = cfg.inverted_index_config.stopwords if cfg.inverted_index_config else None
+    if sw is None:
+        return True
+    removals = set(sw.removals or [])
+    return {"the", "and", "is", "of", "to"}.issubset(removals)
+
+
+
+def _create_collection(client, collection_name: str, config: dict) -> None:
+    ollama_endpoint = _normalize_ollama_endpoint_for_weaviate(
+        config.get("ollamaUrl", "http://localhost:11434")
+    )
+
+    vectorizer = Configure.Vectorizer.text2vec_ollama(
+        model=config.get("embedModel", "qwen3-embedding:4b"),
+        api_endpoint=ollama_endpoint,
+        vectorize_collection_name=True,
+    )
+
+    inverted_index_kwargs = dict(
+        index_null_state=True,
+        index_property_length=True,
+        index_timestamps=True,
+        stopwords_removals=ENGLISH_STOPWORDS,
+    )
+
+    client.collections.create(
+        name=collection_name,
+        properties=[
+            Property(name="title", data_type=DataType.TEXT,
+                     description="Original document name"),
+            Property(name="file_id", data_type=DataType.TEXT,
+                     description="Internal unique id for this file (per upload)."),
+            Property(name="chunk_index", data_type=DataType.INT,
+                     description="Chunk index"),
+            Property(name="doc_type", data_type=DataType.TEXT,
+                     description="Document type"),
+            Property(name="content", data_type=DataType.TEXT,
+                     description="Document content (chunk)"),
+            Property(name="lang", data_type=DataType.TEXT,
+                     description="Detected language"),
+            Property(name="page", data_type=DataType.INT,
+                     description="Document page number"),
+            Property(name="block_kind", data_type=DataType.TEXT,
+                     description="Chunk type (docling_chunk)"),
+        ],
+        vectorizer_config=vectorizer,
+        inverted_index_config=Configure.inverted_index(**inverted_index_kwargs),
+    )
+
+
+def _ensure_collection_ready(
+    client,
+    collection_name: str,
+    config: dict,
+    *,
+    force_recreate: bool = False,
+    auto_recreate: bool = True,
+) -> str:
+    existing_collections = client.collections.list_all()
+    if collection_name in existing_collections:
+        recreate_needed = False
+        if auto_recreate:
+            try:
+                current_cfg = client.collections.get(collection_name).config.get()
+                recreate_needed = (
+                    _has_localhost_endpoint(current_cfg)
+                    or not _stopwords_disabled(current_cfg)
+                )
+            except Exception:
+                recreate_needed = True
+
+        if not force_recreate and not recreate_needed:
+            return "exists"
+
+        client.collections.delete(collection_name)
+        chunked_name = f"ELYSIA_CHUNKED_{collection_name.lower()}__"
+        if chunked_name in existing_collections:
+            client.collections.delete(chunked_name)
+
+        _create_collection(client, collection_name, config)
+        return "recreated"
+
+    _create_collection(client, collection_name, config)
+    return "created"
 
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5001)
+

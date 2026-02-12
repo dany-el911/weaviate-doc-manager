@@ -22,6 +22,8 @@ from PIL import Image, ImageEnhance, ImageFilter
 
 # Tokenizer
 from transformers import AutoTokenizer
+import platform
+from urllib.parse import urlparse, urlunparse
 
 
 app = Flask(__name__)
@@ -48,7 +50,7 @@ INGEST_PRESETS = {
 OCR_LANGS = "ita+eng+deu+fra+spa+por+nld+pol+rus"
 
 _TOKENIZER_CACHE: Dict[str, Any] = {}
-
+_OLLAMA_ENDPOINT_CACHE: Dict[str, str] = {}
 
 # -----------------------------
 # Helpers
@@ -201,12 +203,104 @@ def chunk_text_token_based(
     return [normalize_text(c).strip() for c in out if c and c.strip()]
 
 
+def _running_in_container() -> bool:
+    return os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv")
+
+
+def _normalize_ollama_endpoint(url: str) -> str:
+    if not url:
+        url = "http://localhost:11434"
+
+    cached = _OLLAMA_ENDPOINT_CACHE.get(url)
+    if cached:
+        return cached
+
+    parsed = urlparse(url)
+
+    if parsed.hostname not in ("localhost", "127.0.0.1"):
+        _OLLAMA_ENDPOINT_CACHE[url] = url
+        return url
+
+    if not _running_in_container():
+        _OLLAMA_ENDPOINT_CACHE[url] = url
+        return url
+
+    try:
+        docker_internal_url = "http://ollama:11434"
+        response = requests.get(f"{docker_internal_url}/api/tags", timeout=1)
+        if response.ok:
+            _OLLAMA_ENDPOINT_CACHE[url] = docker_internal_url
+            return docker_internal_url
+    except Exception:
+        pass
+
+    port = parsed.port or 11434
+    system = platform.system().lower()
+
+    if system in ("darwin", "windows"):
+        netloc = f"host.docker.internal:{port}"
+    else:
+        gateway_ip = os.environ.get("DOCKER_GATEWAY_IP", "172.17.0.1")
+        netloc = f"{gateway_ip}:{port}"
+
+    normalized = urlunparse(
+        (
+            parsed.scheme or "http",
+            netloc,
+            parsed.path or "",
+            parsed.params,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+    _OLLAMA_ENDPOINT_CACHE[url] = normalized
+    return normalized
+
+
+def _normalize_ollama_endpoint_for_weaviate(url: str) -> str:
+    if not url:
+        url = "http://localhost:11434"
+
+    cached = _OLLAMA_ENDPOINT_CACHE.get(f"weaviate::{url}")
+    if cached:
+        return cached
+
+    parsed = urlparse(url)
+
+    if parsed.hostname not in ("localhost", "127.0.0.1"):
+        _OLLAMA_ENDPOINT_CACHE[f"weaviate::{url}"] = url
+        return url
+
+    port = parsed.port or 11434
+    system = platform.system().lower()
+
+    if system in ("darwin", "windows"):
+        netloc = f"host.docker.internal:{port}"
+    else:
+        gateway_ip = os.environ.get("DOCKER_GATEWAY_IP", "172.17.0.1")
+        netloc = f"{gateway_ip}:{port}"
+
+    normalized = urlunparse(
+        (
+            parsed.scheme or "http",
+            netloc,
+            parsed.path or "",
+            parsed.params,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+    _OLLAMA_ENDPOINT_CACHE[f"weaviate::{url}"] = normalized
+    return normalized
+
+
 def get_ollama_embedding(text: str, ollama_url: str, model: str) -> list[float]:
     """
     Genera embedding tramite Ollama.
     IMPORTANTE: niente truncate a caratteri qui.
     La dimensione è garantita dal chunking token-based.
     """
+    ollama_url = _normalize_ollama_endpoint(ollama_url)
     print(f"EMBEDDING REQUEST: url={ollama_url}, model={model}, text_len={len(text)}")
     payload = {"model": model, "prompt": text}
     try:
@@ -393,6 +487,10 @@ def create_collection():
             client.close()
             return jsonify({'error': 'Collection already exists'}), 400
 
+        ollama_endpoint = _normalize_ollama_endpoint_for_weaviate(
+            config.get("ollamaUrl", "http://localhost:11434")
+        )
+
         client.collections.create(
             name=collection_name,
             properties=[
@@ -409,8 +507,15 @@ def create_collection():
                 Property(name="ingest_mode", data_type=DataType.TEXT, description="precision | balanced | long_context"),
             ],
             vectorizer_config=Configure.Vectorizer.text2vec_ollama(
-                api_endpoint="http://host.docker.internal:11434",
+                api_endpoint=ollama_endpoint,
                 model="qwen3-embedding:4b"
+            ),
+            # Configurazione inverted index per evitare errori con termini brevi e stopwords
+            inverted_index_config=Configure.inverted_index(
+                stopwords_preset=None,  # Disabilita le stopwords predefinite
+                index_null_state=True,
+                index_property_length=True,
+                index_timestamps=True
             ),
         )
 

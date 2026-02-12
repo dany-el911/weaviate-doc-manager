@@ -40,7 +40,6 @@ interface ProgressData {
 }
 
 // --- COMPONENTE LOADER ISOLATO (Smart Component) ---
-// Ora gestisce lui il polling, così il padre non deve re-renderizzare
 
 interface UploadLoaderProps {
     uploadId: string;
@@ -57,7 +56,7 @@ const UploadLoader: React.FC<UploadLoaderProps> = ({ uploadId, onCancel, onCompl
         percent: 0,
     });
 
-    // Polling logic spostata qui dentro
+    // Polling semplice per progress
     useEffect(() => {
         let isMounted = true;
 
@@ -74,7 +73,6 @@ const UploadLoader: React.FC<UploadLoaderProps> = ({ uploadId, onCancel, onCompl
 
                 if (data.stage === "done") {
                     clearInterval(interval);
-                    // Piccolo ritardo per mostrare il 100% prima di chiudere
                     setTimeout(() => {
                         if (isMounted) onComplete();
                     }, 500);
@@ -82,7 +80,6 @@ const UploadLoader: React.FC<UploadLoaderProps> = ({ uploadId, onCancel, onCompl
 
                 if (data.stage === "cancelled") {
                     clearInterval(interval);
-                    // Upload cancellato dall'utente
                     setTimeout(() => {
                         if (isMounted) onComplete();
                     }, 300);
@@ -96,7 +93,7 @@ const UploadLoader: React.FC<UploadLoaderProps> = ({ uploadId, onCancel, onCompl
             } catch (err) {
                 console.error("Polling error:", err);
             }
-        }, 200);
+        }, 500); // Poll ogni 500ms
 
         return () => {
             isMounted = false;
@@ -178,7 +175,6 @@ const WeaviateDocumentManager: React.FC = () => {
     const [newCollectionName, setNewCollectionName] = useState<string>("");
     const [files, setFiles] = useState<File[]>([]);
 
-    // Stato ridotto al minimo: sappiamo solo SE stiamo caricando e QUALE ID
     const [uploadId, setUploadId] = useState<string | null>(null);
 
     const [status, setStatus] = useState<StatusState>({
@@ -190,7 +186,7 @@ const WeaviateDocumentManager: React.FC = () => {
         weaviateHost: "127.0.0.1",
         weaviatePort: "8080",
         ollamaUrl: "http://127.0.0.1:11434",
-        embedModel: "qwen3-embedding:4b", // mxbai-embed-large
+        embedModel: "qwen3-embedding:4b",
     };
 
     const uploadAbortControllerRef = useRef<AbortController | null>(null);
@@ -288,10 +284,8 @@ const WeaviateDocumentManager: React.FC = () => {
             ? crypto.randomUUID()
             : `up_${Date.now()}`;
 
-        // 1. Impostiamo l'ID: questo farà apparire il Loader
         setUploadId(newUploadId);
 
-        // Controller per l'upload iniziale dei file (la POST)
         const controller = new AbortController();
         uploadAbortControllerRef.current = controller;
 
@@ -300,11 +294,6 @@ const WeaviateDocumentManager: React.FC = () => {
         formData.append("config", JSON.stringify(config));
         formData.append("uploadId", newUploadId);
         files.forEach((file) => formData.append("files", file));
-
-        // 2. Lanciamo la richiesta "Fire and Forget" (o quasi)
-        // Non aspettiamo la risposta qui per aggiornare l'UI,
-        // lasciamo che sia il Loader a fare polling.
-        // Tuttavia dobbiamo gestire gli errori di rete iniziali della POST.
 
         fetch("http://127.0.0.1:5001/api/upload-documents", {
             method: "POST",
@@ -316,46 +305,37 @@ const WeaviateDocumentManager: React.FC = () => {
                 if (!response.ok) {
                     throw new Error(data.error || "Errore upload");
                 }
-                // Se va a buon fine, il polling nel Loader se ne accorgerà (state="done")
-                // quindi qui non dobbiamo fare nulla di specifico sull'UI.
             })
             .catch((error) => {
                 if (error.name === 'AbortError') return;
-                // Se la POST fallisce subito (es. server down), chiudiamo il loader
                 setUploadId(null);
                 setStatus({ type: "error", message: error.message });
             });
     };
 
-    // Callback chiamata dal Loader quando ha finito
     const handleUploadComplete = () => {
         setUploadId(null);
-        setFiles([]); // Pulisce i file
-        setSelectedCollection(""); // <--- AGGIUNGI QUESTA RIGA: Resetta la dropdown
+        setFiles([]);
+        setSelectedCollection("");
         setStatus({
             type: "success",
-            message: `Upload completato con successo.` // Messaggio generico dato che la collezione è deselezionata
+            message: `Upload completato con successo.`
         });
     };
 
-    // Callback chiamata dal Loader se rileva un errore dal server
     const handleUploadError = (msg: string) => {
         setUploadId(null);
         setStatus({ type: "error", message: msg });
     };
 
-    // Callback per annullamento manuale
     const cancelUpload = async (): Promise<void> => {
-        // Interrompiamo la POST se è ancora in corso
         if (uploadAbortControllerRef.current) {
             uploadAbortControllerRef.current.abort();
         }
 
         const currentId = uploadId;
-        // Chiudiamo subito il loader per reattività UI
         setUploadId(null);
 
-        // Chiamata backend per pulizia
         if (currentId) {
             try {
                 const response = await fetch("http://127.0.0.1:5001/api/cancel-upload", {
@@ -412,8 +392,6 @@ const WeaviateDocumentManager: React.FC = () => {
 
     return (
         <>
-            {/* Il Loader appare solo se c'è un uploadId.
-                Tutta la logica di aggiornamento (re-render rapido) avviene SOLO dentro <UploadLoader> */}
             {uploadId && (
                 <UploadLoader
                     uploadId={uploadId}
@@ -501,14 +479,12 @@ const WeaviateDocumentManager: React.FC = () => {
                                     }}
                                 >
                                     <option value="">-- Scegli collezione --</option>
-
                                     {collections.map((col, idx) => (
                                         <option key={idx} value={col.class || col.name}>
                                             {col.class || col.name}
                                         </option>
                                     ))}
                                 </select>
-
                             </div>
                             <div>
                                 <label className="block text-sm text-gray-300 mb-1">Seleziona File (PDF/TXT/RTF/Immagini)</label>
@@ -524,33 +500,6 @@ const WeaviateDocumentManager: React.FC = () => {
                                 </p>
                             </div>
                         </div>
-
-
-                        {/*<div className="mt-6 border border-zinc-700 rounded-lg p-4 bg-[#0b0b0b]">*/}
-                        {/*    <div className="flex items-center gap-2 mb-2">*/}
-                        {/*        <AlertCircle className="w-4 h-4 text-yellow-400" />*/}
-                        {/*        /!* Etichetta più chiara e professionale *!/*/}
-                        {/*        <span className="text-m font-medium text-gray-200">Dimensione Frammenti (Chunk Size)</span>*/}
-                        {/*    </div>*/}
-
-                        {/*    <input*/}
-                        {/*        type="number"*/}
-                        {/*        min={64}*/}
-                        {/*        max={2048}*/}
-                        {/*        step={64}*/}
-                        {/*        value={config.chunkSize}*/}
-                        {/*        onChange={(e) => setConfig({ ...config, chunkSize: e.target.value })}*/}
-                        {/*        className="w-full px-3 py-2 bg-[#0f0f0f] border border-zinc-700 rounded-lg text-gray-200 text-sm focus:border-yellow-400 focus:outline-none"*/}
-                        {/*    />*/}
-
-                        {/*    /!* Spiegazione utile invece di un avvertimento generico *!/*/}
-                        {/*    <p className="text-xs text-gray-400 mt-2 leading-relaxed">*/}
-                        {/*        Definisce la lunghezza massima di ogni blocco di testo.*/}
-                        {/*        <span className="block mt-1 text-amber-400/90">*/}
-                        {/*        Consigliato: 1024. Un valore più basso aumenta la precisione per dati specifici, un valore più alto mantiene più contesto narrativo.*/}
-                        {/*    </span>*/}
-                        {/*    </p>*/}
-                        {/*</div>*/}
 
                         {files.length > 0 && (
                             <div className="mt-4 p-4 bg-[#0f0f0f] border border-zinc-700 rounded-lg">
