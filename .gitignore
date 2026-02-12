@@ -210,3 +210,14 @@ node_modules/
 frontend/node_modules
 
 .idea
+
+# Local user-only files
+.DS_Store
+backend/.DS_Store
+data/.DS_Store
+check_collections.py
+test_ollama_endpoint.py
+FIX_OLLAMA_CONNECTION.md
+OLLAMA_MULTIPLATFORM.md
+QUICKSTART_TEST.md
+SOLUZIONE_MULTIPIATTAFORMA.md
