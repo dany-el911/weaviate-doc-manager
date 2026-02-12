@@ -76,3 +76,4 @@ volumes:
   weaviate_data:
   ollama:
 
+
