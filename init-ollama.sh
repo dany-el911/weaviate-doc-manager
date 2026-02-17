@@ -22,7 +22,8 @@ echo "✓ Ollama service is ready!"
 # Lista dei modelli da scaricare
 MODELS=(
   "qwen3-embedding:4b"
-  "qwen2.5:3b-instruct"
+  # "qwen2.5:3b-instruct"
+  "llama3.1:8b"
 )
 
 echo ""

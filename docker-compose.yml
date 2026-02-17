@@ -5,10 +5,17 @@ services:
     image: ollama/ollama:latest
     container_name: weaviate-doc-manager-ollama
     ports:
-      - "11434:11434"
+      - "11435:11434"
     volumes:
       - ollama:/root/.ollama
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -66,7 +73,8 @@ services:
       GENERATIVE_OLLAMA_API_ENDPOINT: 'http://ollama:11434'
 
       TEXT2VEC_OLLAMA_MODEL: 'qwen3-embedding:4b'
-      GENERATIVE_OLLAMA_MODEL: 'qwen2.5:3b-instruct'
+      # GENERATIVE_OLLAMA_MODEL: 'qwen2.5:3b-instruct'
+      GENERATIVE_OLLAMA_MODEL: 'llama3.1:8b'
 
       CLUSTER_HOSTNAME: 'node1'
     volumes:
@@ -75,5 +83,3 @@ services:
 volumes:
   weaviate_data:
   ollama:
-
-

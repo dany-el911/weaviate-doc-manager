@@ -245,90 +245,111 @@ def chunk_text_token_based(
 def _is_running_in_docker() -> bool:
     return os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv")
 
+def _ollama_reachable(url: str, timeout: float = 0.6) -> bool:
+    try:
+        r = requests.get(f"{url}/api/tags", timeout=timeout)
+        return r.ok
+    except Exception:
+        return False
+
+
+def _auto_detect_host_ollama_url(default: str = "http://localhost:11434") -> str:
+    """
+    Decide l'endpoint Ollama raggiungibile DAL PROCESSO PYTHON (host-side).
+    - macOS tipico: http://localhost:11434
+    - Linux aziendale (tuo compose): http://localhost:11435
+    Override possibile via env OLLAMA_HOST.
+    """
+    env = os.environ.get("OLLAMA_HOST")
+    if env:
+        return env.rstrip("/")
+
+    # 1) prova default 11434
+    if _ollama_reachable("http://localhost:11434"):
+        return "http://localhost:11434"
+
+    # 2) prova la tua porta “anti-conflitto”
+    if _ollama_reachable("http://localhost:11435"):
+        return "http://localhost:11435"
+
+    # fallback
+    return default.rstrip("/")
+
 
 def _normalize_ollama_endpoint(ollama_endpoint: str) -> str:
+    # endpoint per PYTHON (host-side)
     if not ollama_endpoint:
-        ollama_endpoint = "http://localhost:11434"
+        ollama_endpoint = _auto_detect_host_ollama_url()
 
+    ollama_endpoint = ollama_endpoint.rstrip("/")
     cached = _OLLAMA_ENDPOINT_CACHE.get(ollama_endpoint)
     if cached:
         return cached
 
+    # se è già un host non-local, non tocchiamo
     parsed = urlparse(ollama_endpoint)
-
     if parsed.hostname not in ("localhost", "127.0.0.1"):
         _OLLAMA_ENDPOINT_CACHE[ollama_endpoint] = ollama_endpoint
         return ollama_endpoint
 
-    if not _is_running_in_docker():
-        _OLLAMA_ENDPOINT_CACHE[ollama_endpoint] = ollama_endpoint
-        return ollama_endpoint
+    # se è localhost, lasciamo com'è (è proprio quello che serve al python)
+    _OLLAMA_ENDPOINT_CACHE[ollama_endpoint] = ollama_endpoint
+    return ollama_endpoint
 
-    try:
-        docker_internal_url = "http://ollama:11434"
-        response = requests.get(f"{docker_internal_url}/api/tags", timeout=1)
-        if response.ok:
-            _OLLAMA_ENDPOINT_CACHE[ollama_endpoint] = docker_internal_url
-            return docker_internal_url
-    except Exception:
-        pass
-
-    port = parsed.port or 11434
-    system = platform.system().lower()
-
-    if system in ("darwin", "windows"):
-        netloc = f"host.docker.internal:{port}"
-    else:
-        gateway_ip = os.environ.get("DOCKER_GATEWAY_IP", "172.17.0.1")
-        netloc = f"{gateway_ip}:{port}"
-
-    normalized = urlunparse(
-        (
-            parsed.scheme or "http",
-            netloc,
-            parsed.path or "",
-            parsed.params,
-            parsed.query,
-            parsed.fragment,
-        )
-    )
-    _OLLAMA_ENDPOINT_CACHE[ollama_endpoint] = normalized
-    return normalized
 
 
 def _normalize_ollama_endpoint_for_weaviate(url: str) -> str:
-    if not url:
-        url = "http://localhost:11434"
+    """
+    Endpoint che viene SALVATO nello schema Weaviate.
+    Deve essere raggiungibile DA WEAVIATE (container), non dal python.
+    Regole:
+    - Se url è già non-localhost -> lo usiamo (scelta esplicita)
+    - macOS/Windows: host.docker.internal:<port>
+    - Linux:
+        - se l'ollama host-side è 11435 (mappatura docker) -> in genere ollama è un servizio nel compose:
+          quindi endpoint migliore per Weaviate è http://ollama:11434
+        - altrimenti fallback su gateway docker (172.17.0.1:<port>)
+    Override possibile via env WEAVIATE_OLLAMA_ENDPOINT
+    """
+    override = os.environ.get("WEAVIATE_OLLAMA_ENDPOINT")
+    if override:
+        return override.rstrip("/")
 
+    if not url:
+        url = _auto_detect_host_ollama_url()
+
+    url = url.rstrip("/")
     cached = _OLLAMA_ENDPOINT_CACHE.get(f"weaviate::{url}")
     if cached:
         return cached
 
     parsed = urlparse(url)
 
+    # scelta esplicita non-localhost: ok così
     if parsed.hostname not in ("localhost", "127.0.0.1"):
         _OLLAMA_ENDPOINT_CACHE[f"weaviate::{url}"] = url
         return url
 
-    port = parsed.port or 11434
+    # port host-side (11434 su mac, 11435 su linux nel tuo caso)
+    host_port = parsed.port or 11434
     system = platform.system().lower()
 
+    # macOS / Windows: Weaviate container raggiunge l'host con host.docker.internal
     if system in ("darwin", "windows"):
-        netloc = f"host.docker.internal:{port}"
-    else:
-        gateway_ip = os.environ.get("DOCKER_GATEWAY_IP", "172.17.0.1")
-        netloc = f"{gateway_ip}:{port}"
+        normalized = f"http://host.docker.internal:{host_port}"
+        _OLLAMA_ENDPOINT_CACHE[f"weaviate::{url}"] = normalized
+        return normalized
 
-    normalized = urlunparse(
-        (
-            parsed.scheme or "http",
-            netloc,
-            parsed.path or "",
-            parsed.params,
-            parsed.query,
-            parsed.fragment,
-        )
-    )
+    # Linux: se stai usando la porta 11435, quasi sicuramente Ollama è nel docker-compose
+    # e Weaviate deve chiamare il servizio 'ollama:11434'
+    if host_port == 11435:
+        normalized = "http://ollama:11434"
+        _OLLAMA_ENDPOINT_CACHE[f"weaviate::{url}"] = normalized
+        return normalized
+
+    # fallback Linux: gateway docker verso host
+    gateway_ip = os.environ.get("DOCKER_GATEWAY_IP", "172.17.0.1")
+    normalized = f"http://{gateway_ip}:{host_port}"
     _OLLAMA_ENDPOINT_CACHE[f"weaviate::{url}"] = normalized
     return normalized
 
