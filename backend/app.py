@@ -480,6 +480,7 @@ def create_collection():
         data = request.get_json(force=True)
         collection_name = data['name']
         config = data['config']
+        description = (data.get('description') or "").strip()
 
         client = init_weaviate_client(config['weaviateHost'], config['weaviatePort'])
 
@@ -493,6 +494,7 @@ def create_collection():
 
         client.collections.create(
             name=collection_name,
+            description=description or None,
             properties=[
                 Property(name="title", data_type=DataType.TEXT, description="Original document name"),
                 Property(name="file_id", data_type=DataType.TEXT, description="Internal unique id for this file (per upload)."),

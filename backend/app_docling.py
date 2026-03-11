@@ -621,6 +621,7 @@ def create_collection():
         data = request.get_json(force=True)
         collection_name = data['name']
         config = data['config']
+        description = (data.get('description') or "").strip()
         force_recreate = bool(data.get('force_recreate', False))
         auto_recreate = bool(data.get('auto_recreate', True))
 
@@ -638,6 +639,7 @@ def create_collection():
             client,
             collection_name,
             config,
+            description=description,
             force_recreate=force_recreate,
             auto_recreate=auto_recreate,
         )
@@ -1225,7 +1227,7 @@ def _stopwords_disabled(cfg) -> bool:
 
 
 
-def _create_collection(client, collection_name: str, config: dict) -> None:
+def _create_collection(client, collection_name: str, config: dict, description: str = "") -> None:
     ollama_endpoint = _normalize_ollama_endpoint_for_weaviate(
         config.get("ollamaUrl", "http://localhost:11434")
     )
@@ -1245,6 +1247,7 @@ def _create_collection(client, collection_name: str, config: dict) -> None:
 
     client.collections.create(
         name=collection_name,
+        description=description or None,
         properties=[
             Property(name="title", data_type=DataType.TEXT,
                      description="Original document name"),
@@ -1273,6 +1276,7 @@ def _ensure_collection_ready(
     collection_name: str,
     config: dict,
     *,
+    description: str = "",
     force_recreate: bool = False,
     auto_recreate: bool = True,
 ) -> str:
@@ -1297,10 +1301,10 @@ def _ensure_collection_ready(
         if chunked_name in existing_collections:
             client.collections.delete(chunked_name)
 
-        _create_collection(client, collection_name, config)
+        _create_collection(client, collection_name, config, description)
         return "recreated"
 
-    _create_collection(client, collection_name, config)
+    _create_collection(client, collection_name, config, description)
     return "created"
 
 

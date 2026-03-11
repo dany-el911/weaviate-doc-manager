@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import type { ChangeEvent } from "react";
 import {
     Upload,
@@ -189,30 +189,21 @@ const WeaviateDocumentManager: React.FC = () => {
 
     const uploadAbortControllerRef = useRef<AbortController | null>(null);
 
-    useEffect(() => {
-        void loadCollections();
-    }, []);
-
-    const loadCollections = async (): Promise<void> => {
+    const loadCollections = useCallback(async (): Promise<void> => {
         try {
-            const response = await fetch(
-                `http://${config.weaviateHost}:${config.weaviatePort}/v1/schema`
-            );
-
-            if (!response.ok) throw new Error("Failed to fetch schema");
-
-            const data = (await response.json()) as { classes?: WeaviateClass[] };
-            const filtered = (data.classes ?? []).filter((col: WeaviateClass) => {
-                const name = col.class || col.name || "";
-                return !name.startsWith("ELYSIA_") && !name.startsWith("_");
-            });
-
-            setCollections(filtered);
-        } catch (error) {
-            console.error("Error loading collections:", error);
+            const res = await fetch(`http://${config.weaviateHost}:${config.weaviatePort}/v1/schema`);
+            if (!res.ok) throw new Error();
+            const data = await res.json() as { classes?: WeaviateClass[] };
+            setCollections((data.classes ?? []).filter((c) => {
+                const n = c.class || c.name || "";
+                return !n.startsWith("ELYSIA_") && !n.startsWith("_");
+            }));
+        } catch {
             setStatus({ type: "error", message: "Impossibile connettersi a Weaviate" });
         }
-    };
+    }, [config.weaviateHost, config.weaviatePort]);
+
+    useEffect(() => { void loadCollections(); }, [loadCollections]);
 
     const handleFileChange = (e: ChangeEvent<HTMLInputElement>): void => {
         if (!e.target.files) return;
@@ -618,3 +609,4 @@ const WeaviateDocumentManager: React.FC = () => {
 };
 
 export default WeaviateDocumentManager;
+
