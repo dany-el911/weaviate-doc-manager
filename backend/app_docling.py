@@ -1,3 +1,5 @@
+import collections
+import datetime
 import json
 import os
 import platform
@@ -55,6 +57,315 @@ ENGLISH_STOPWORDS = [
 
 _TOKENIZER_CACHE: Dict[str, Any] = {}
 _OLLAMA_ENDPOINT_CACHE: Dict[str, str] = {}
+
+# Profili delle collection, aggiornati dopo ogni ingestione
+# { collection_name -> dict }
+COLLECTION_PROFILES: Dict[str, Dict[str, Any]] = {}
+
+# Stopwords generiche multilingua usate per estrarre top_terms
+_PROFILE_STOPWORDS = {
+    "il", "lo", "la", "i", "gli", "le", "un", "una", "uno",
+    "e", "o", "ma", "se", "di", "da", "in", "con", "su", "per",
+    "tra", "fra", "a", "al", "del", "della", "dei", "degli", "delle",
+    "che", "è", "non", "si", "ha", "ho", "ci", "ne", "mi", "ti",
+    "the", "a", "an", "and", "or", "but", "in", "on", "at", "to",
+    "of", "for", "is", "it", "as", "by", "be", "this", "that", "with",
+    "are", "was", "not", "from", "they", "we", "you", "he", "she",
+    "der", "die", "das", "und", "in", "zu", "den", "des", "dem", "ein",
+    "le", "la", "les", "de", "du", "des", "et", "en", "un", "une",
+    "que", "se", "por", "con", "del", "los", "las", "una", "al",
+}
+
+
+class CollectionProfileBuilder:
+    """
+    Accumula metadati aggregati sui documenti/chunk ingeriti in una collection.
+    Va istanziato una volta per sessione di ingestione e aggiornato
+    con ogni file processato. Il metodo build() restituisce il profilo finale.
+
+    Il campo _term_counts viene mantenuto come dict serializzabile in modo da
+    poter essere ripristinato e riaggiornato nelle ingestioni successive,
+    evitando il degrado del merge ingenuo su liste finali.
+    """
+
+    MAX_SAMPLE_TITLES = 5
+    MAX_SAMPLE_CHUNKS = 5
+    MAX_SAMPLE_CHUNK_CHARS = 250  # lunghezza massima per singolo sample chunk
+    TOP_TERMS_N = 20
+
+    def __init__(
+        self,
+        collection_name: str,
+        searchable_fields: List[str],
+        content_fields: List[str],
+        *,
+        seed_term_counts: Dict[str, int] | None = None,
+    ):
+        self.collection_name = collection_name
+        self.searchable_fields = searchable_fields
+        self.content_fields = content_fields
+
+        self._document_count: int = 0
+        self._chunk_count: int = 0
+        self._languages: collections.Counter = collections.Counter()
+        self._doc_types: collections.Counter = collections.Counter()
+        self._sample_titles: List[str] = []
+        self._sample_chunks: List[str] = []
+        # _term_counts è il contatore grezzo persistibile (dict serializzabile)
+        self._term_counts: collections.Counter = collections.Counter(seed_term_counts or {})
+
+    def add_document(
+        self,
+        title: str,
+        doc_type: str,
+        detected_lang: str,
+        chunks: List[str],
+    ) -> None:
+        """Registra un documento e i suoi chunk nel profilo."""
+        self._document_count += 1
+        self._chunk_count += len(chunks)
+        self._doc_types[doc_type] += 1
+
+        if detected_lang and detected_lang != "unknown":
+            self._languages[detected_lang] += 1
+
+        if title and len(self._sample_titles) < self.MAX_SAMPLE_TITLES:
+            if title not in self._sample_titles:
+                self._sample_titles.append(title)
+
+        for chunk in chunks:
+            cleaned = " ".join(chunk.split())  # normalizza spazi e newline
+            if cleaned and len(self._sample_chunks) < self.MAX_SAMPLE_CHUNKS:
+                self._sample_chunks.append(cleaned[:self.MAX_SAMPLE_CHUNK_CHARS])
+
+            # Accumula termini per top_terms nel contatore grezzo
+            self._update_term_counter(chunk)
+
+    def _update_term_counter(self, text: str) -> None:
+        """Estrae token normalizzati dal testo e li conta."""
+        tokens = re.findall(r"\b[a-zA-ZàáâãäåæçèéêëìíîïðñòóôõöùúûüýÀ-Ö]{3,}\b", text.lower())
+        for tok in tokens:
+            if tok not in _PROFILE_STOPWORDS:
+                self._term_counts[tok] += 1
+
+    @staticmethod
+    def build_description_text(
+        collection_name: str,
+        document_count: int,
+        chunk_count: int,
+        languages_distribution: Dict[str, int],
+        doc_types_distribution: Dict[str, int],
+        searchable_fields: List[str],
+        top_terms: List[str],
+        sample_titles: List[str],
+    ) -> str:
+        """
+        Genera una stringa descrittiva in linguaggio naturale della collection.
+        Usata per embedding, BM25, similarity search e reranking.
+        """
+        langs = ", ".join(
+            lang for lang, _ in sorted(languages_distribution.items(), key=lambda x: -x[1])
+        ) or "sconosciuta"
+        doc_types = ", ".join(
+            dt for dt, _ in sorted(doc_types_distribution.items(), key=lambda x: -x[1])
+        ) or "vari"
+        terms_str = ", ".join(top_terms[:10]) if top_terms else "n/d"
+        titles_str = ", ".join(sample_titles[:3]) if sample_titles else "n/d"
+        fields_str = ", ".join(searchable_fields)
+
+        return (
+            f"Collection {collection_name}. "
+            f"{document_count} documenti, {chunk_count} chunk. "
+            f"Lingue principali: {langs}. "
+            f"Tipi documento: {doc_types}. "
+            f"Campi ricercabili: {fields_str}. "
+            f"Termini frequenti: {terms_str}. "
+            f"Titoli campione: {titles_str}."
+        )
+
+    def build(self) -> Dict[str, Any]:
+        """Restituisce il profilo aggregato della collection."""
+        top_terms = [term for term, _ in self._term_counts.most_common(self.TOP_TERMS_N)]
+
+        langs = dict(self._languages)
+        doc_types = dict(self._doc_types)
+
+        description_text = self.build_description_text(
+            collection_name=self.collection_name,
+            document_count=self._document_count,
+            chunk_count=self._chunk_count,
+            languages_distribution=langs,
+            doc_types_distribution=doc_types,
+            searchable_fields=self.searchable_fields,
+            top_terms=top_terms,
+            sample_titles=self._sample_titles,
+        )
+
+        return {
+            "collection_name": self.collection_name,
+            "description_text": description_text,
+            "document_count": self._document_count,
+            "chunk_count": self._chunk_count,
+            "languages_distribution": langs,
+            "doc_types_distribution": doc_types,
+            "searchable_fields": self.searchable_fields,
+            "content_fields": self.content_fields,
+            "sample_titles": self._sample_titles,
+            "sample_chunks": self._sample_chunks,
+            "top_terms": top_terms,
+            # contatore grezzo serializzabile: permette merge corretto nelle ingestioni future
+            "_term_counts": dict(self._term_counts),
+            "updated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+
+
+# Campi testuali standard della collection (usati nel profilo)
+_COLLECTION_SEARCHABLE_FIELDS = ["title", "content", "doc_type", "lang"]
+_COLLECTION_CONTENT_FIELDS = ["content"]
+
+# Collection tecnica Weaviate dove vengono persistiti i profili
+_PROFILES_COLLECTION_NAME = "ELYSIA_COLLECTION_PROFILES"
+
+
+def _ensure_profiles_collection(client) -> None:
+    """Crea la collection tecnica dei profili se non esiste già."""
+    existing = client.collections.list_all()
+    if _PROFILES_COLLECTION_NAME in existing:
+        return
+
+    client.collections.create(
+        name=_PROFILES_COLLECTION_NAME,
+        description="Profili descrittivi delle collection del corpus (metadati di sistema).",
+        properties=[
+            Property(name="collection_name", data_type=DataType.TEXT,
+                     description="Nome della collection reale"),
+            Property(name="description_text", data_type=DataType.TEXT,
+                     description="Testo descrittivo in linguaggio naturale (per embedding/BM25/reranking)"),
+            Property(name="document_count", data_type=DataType.INT,
+                     description="Numero totale di documenti ingeriti"),
+            Property(name="chunk_count", data_type=DataType.INT,
+                     description="Numero totale di chunk ingeriti"),
+            Property(name="languages_json", data_type=DataType.TEXT,
+                     description="Distribuzione delle lingue (JSON)"),
+            Property(name="doc_types_json", data_type=DataType.TEXT,
+                     description="Distribuzione dei tipi documento (JSON)"),
+            Property(name="searchable_fields_json", data_type=DataType.TEXT,
+                     description="Campi ricercabili (JSON array)"),
+            Property(name="content_fields_json", data_type=DataType.TEXT,
+                     description="Campi contenuto (JSON array)"),
+            Property(name="sample_titles_text", data_type=DataType.TEXT,
+                     description="Titoli campione separati da newline"),
+            Property(name="sample_chunks_text", data_type=DataType.TEXT,
+                     description="Chunk campione separati da doppio newline"),
+            Property(name="top_terms_text", data_type=DataType.TEXT,
+                     description="Termini frequenti separati da virgola"),
+            Property(name="term_counts_json", data_type=DataType.TEXT,
+                     description="Contatore grezzo dei termini (JSON) — usato per merge corretto"),
+            Property(name="updated_at", data_type=DataType.TEXT,
+                     description="Timestamp ultimo aggiornamento (ISO 8601 UTC)"),
+        ],
+        # Nessun vectorizer: è una collection di metadati strutturati, non di corpus
+        vectorizer_config=Configure.Vectorizer.none(),
+    )
+    print(f"[Profiles] Collection tecnica '{_PROFILES_COLLECTION_NAME}' creata.")
+
+
+def _profile_to_weaviate_properties(profile: Dict[str, Any]) -> Dict[str, Any]:
+    """Converte il dict profilo nei campi Weaviate (tutto scalare/JSON string)."""
+    return {
+        "collection_name": profile["collection_name"],
+        "description_text": profile.get("description_text", ""),
+        "document_count": profile.get("document_count", 0),
+        "chunk_count": profile.get("chunk_count", 0),
+        "languages_json": json.dumps(profile.get("languages_distribution", {}), ensure_ascii=False),
+        "doc_types_json": json.dumps(profile.get("doc_types_distribution", {}), ensure_ascii=False),
+        "searchable_fields_json": json.dumps(profile.get("searchable_fields", []), ensure_ascii=False),
+        "content_fields_json": json.dumps(profile.get("content_fields", []), ensure_ascii=False),
+        "sample_titles_text": "\n".join(profile.get("sample_titles", [])),
+        "sample_chunks_text": "\n\n".join(profile.get("sample_chunks", [])),
+        "top_terms_text": ", ".join(profile.get("top_terms", [])),
+        "term_counts_json": json.dumps(profile.get("_term_counts", {}), ensure_ascii=False),
+        "updated_at": profile.get("updated_at", ""),
+    }
+
+
+def _weaviate_properties_to_profile(props: Dict[str, Any]) -> Dict[str, Any]:
+    """Riconverte le proprietà Weaviate nel dict profilo normalizzato."""
+    def _safe_json(s, default):
+        try:
+            return json.loads(s) if s else default
+        except Exception:
+            return default
+
+    return {
+        "collection_name": props.get("collection_name", ""),
+        "description_text": props.get("description_text", ""),
+        "document_count": props.get("document_count", 0),
+        "chunk_count": props.get("chunk_count", 0),
+        "languages_distribution": _safe_json(props.get("languages_json"), {}),
+        "doc_types_distribution": _safe_json(props.get("doc_types_json"), {}),
+        "searchable_fields": _safe_json(props.get("searchable_fields_json"), []),
+        "content_fields": _safe_json(props.get("content_fields_json"), []),
+        "sample_titles": [t for t in (props.get("sample_titles_text") or "").split("\n") if t.strip()],
+        "sample_chunks": [c for c in (props.get("sample_chunks_text") or "").split("\n\n") if c.strip()],
+        "top_terms": [t.strip() for t in (props.get("top_terms_text") or "").split(",") if t.strip()],
+        "_term_counts": _safe_json(props.get("term_counts_json"), {}),
+        "updated_at": props.get("updated_at", ""),
+    }
+
+
+def upsert_collection_profile(client, profile: Dict[str, Any]) -> None:
+    """
+    Persiste (inserisce o aggiorna) il profilo di una collection nella
+    collection tecnica ELYSIA_COLLECTION_PROFILES in Weaviate.
+
+    Esegue un upsert: cerca l'oggetto esistente per collection_name,
+    lo cancella e inserisce quello nuovo (Weaviate v4 non ha update nativo comodo).
+    """
+    try:
+        _ensure_profiles_collection(client)
+        col = client.collections.get(_PROFILES_COLLECTION_NAME)
+        cname = profile["collection_name"]
+
+        # Cerca oggetto esistente per questo collection_name
+        result = col.query.fetch_objects(
+            filters=Filter.by_property("collection_name").equal(cname),
+            limit=1,
+        )
+        if result.objects:
+            existing_uuid = result.objects[0].uuid
+            col.data.delete_by_id(existing_uuid)
+            print(f"[Profiles] Vecchio profilo '{cname}' rimosso (uuid={existing_uuid})")
+
+        col.data.insert(properties=_profile_to_weaviate_properties(profile))
+        print(f"[Profiles] Profilo '{cname}' salvato in Weaviate "
+              f"({profile.get('document_count')} doc, {profile.get('chunk_count')} chunk).")
+
+    except Exception as e:
+        print(f"[Profiles] ERRORE upsert profilo '{profile.get('collection_name')}': {e}")
+        traceback.print_exc()
+
+
+def read_collection_profile_from_weaviate(client, collection_name: str) -> Dict[str, Any] | None:
+    """
+    Legge il profilo di una collection da Weaviate.
+    Ritorna None se non trovato.
+    """
+    try:
+        existing = client.collections.list_all()
+        if _PROFILES_COLLECTION_NAME not in existing:
+            return None
+        col = client.collections.get(_PROFILES_COLLECTION_NAME)
+        result = col.query.fetch_objects(
+            filters=Filter.by_property("collection_name").equal(collection_name),
+            limit=1,
+        )
+        if not result.objects:
+            return None
+        return _weaviate_properties_to_profile(result.objects[0].properties)
+    except Exception as e:
+        print(f"[Profiles] Errore lettura profilo '{collection_name}' da Weaviate: {e}")
+        return None
 
 # Assicurati che il processo Python veda Tesseract
 os.environ["PATH"] = "/usr/local/bin:" + os.environ.get("PATH", "")
@@ -795,6 +1106,19 @@ def process_files_docling_background(upload_id, collection_name, config, temp_fi
         uploaded_files = []
         failed_files = []
 
+        # Carica profilo precedente (da cache in memoria o da Weaviate) per il seeding del term counter
+        existing_profile = COLLECTION_PROFILES.get(collection_name) or \
+                           read_collection_profile_from_weaviate(client, collection_name)
+        seed_counts = existing_profile.get("_term_counts", {}) if existing_profile else {}
+
+        # Builder per il profilo della collection (con seed dal profilo precedente se presente)
+        profile_builder = CollectionProfileBuilder(
+            collection_name=collection_name,
+            searchable_fields=_COLLECTION_SEARCHABLE_FIELDS,
+            content_fields=_COLLECTION_CONTENT_FIELDS,
+            seed_term_counts=seed_counts,
+        )
+
         # Formati supportati da Docling
         supported_extensions = [
             '.pdf', '.docx', '.pptx', '.html', '.md', '.txt',
@@ -1021,6 +1345,14 @@ def process_files_docling_background(upload_id, collection_name, config, temp_fi
 
                 print(f"[UPLOAD] Inserimento completato: {inserted_count} chunk inseriti per il file {filename}")
 
+                # Aggiorna il profilo della collection con i dati di questo documento
+                profile_builder.add_document(
+                    title=title,
+                    doc_type=doc_type,
+                    detected_lang=detected_lang,
+                    chunks=chunk_texts,
+                )
+
                 processed_files += 1
                 uploaded_files.append(filename)
 
@@ -1052,6 +1384,81 @@ def process_files_docling_background(upload_id, collection_name, config, temp_fi
 
             finally:
                 os.unlink(tmp_path)
+
+        # Costruisce e salva il profilo della collection (anche in caso di upload parziale)
+        if processed_files > 0:
+            new_profile = profile_builder.build()
+
+            # Legge il profilo esistente: prima in memoria, poi da Weaviate
+            existing = COLLECTION_PROFILES.get(collection_name)
+            if existing is None:
+                existing = read_collection_profile_from_weaviate(client, collection_name)
+
+            if existing:
+                # --- Merge rules esplicite ---
+
+                # Contatori scalari: somma
+                new_profile["document_count"] += existing.get("document_count", 0)
+                new_profile["chunk_count"] += existing.get("chunk_count", 0)
+
+                # Distribuzioni: merge con somma per chiave
+                for lang, cnt in existing.get("languages_distribution", {}).items():
+                    new_profile["languages_distribution"][lang] = (
+                        new_profile["languages_distribution"].get(lang, 0) + cnt
+                    )
+                for dt, cnt in existing.get("doc_types_distribution", {}).items():
+                    new_profile["doc_types_distribution"][dt] = (
+                        new_profile["doc_types_distribution"].get(dt, 0) + cnt
+                    )
+
+                # sample_titles: unione deduplicata con limite
+                merged_titles = new_profile["sample_titles"] + [
+                    t for t in existing.get("sample_titles", [])
+                    if t not in new_profile["sample_titles"]
+                ]
+                new_profile["sample_titles"] = merged_titles[:CollectionProfileBuilder.MAX_SAMPLE_TITLES]
+
+                # sample_chunks: unione deduplicata con limite (trim già fatto nel builder)
+                merged_chunks = new_profile["sample_chunks"] + [
+                    c for c in existing.get("sample_chunks", [])
+                    if c not in new_profile["sample_chunks"]
+                ]
+                new_profile["sample_chunks"] = merged_chunks[:CollectionProfileBuilder.MAX_SAMPLE_CHUNKS]
+
+                # top_terms: ricalcolo dal contatore grezzo unito (non merge di liste finali)
+                merged_counts = collections.Counter(existing.get("_term_counts", {}))
+                merged_counts.update(new_profile.get("_term_counts", {}))
+                new_profile["_term_counts"] = dict(merged_counts)
+                new_profile["top_terms"] = [
+                    term for term, _ in merged_counts.most_common(CollectionProfileBuilder.TOP_TERMS_N)
+                ]
+
+                # updated_at: timestamp più recente (quello appena calcolato)
+                # già impostato da build(), nessuna azione necessaria
+
+                # Ricalcola description_text con i dati aggiornati
+                new_profile["description_text"] = CollectionProfileBuilder.build_description_text(
+                    collection_name=collection_name,
+                    document_count=new_profile["document_count"],
+                    chunk_count=new_profile["chunk_count"],
+                    languages_distribution=new_profile["languages_distribution"],
+                    doc_types_distribution=new_profile["doc_types_distribution"],
+                    searchable_fields=new_profile["searchable_fields"],
+                    top_terms=new_profile["top_terms"],
+                    sample_titles=new_profile["sample_titles"],
+                )
+
+            # Salva in memoria
+            COLLECTION_PROFILES[collection_name] = new_profile
+
+            # Persisti su Weaviate (upsert nella collection tecnica)
+            upsert_collection_profile(client, new_profile)
+
+            print(
+                f"[UPLOAD] Profilo collection '{collection_name}' aggiornato: "
+                f"{new_profile['document_count']} doc, {new_profile['chunk_count']} chunk, "
+                f"top_terms={new_profile['top_terms'][:5]}"
+            )
 
         # Progress done (o cancelled se interrotto)
         if upload_id:
@@ -1157,6 +1564,72 @@ def cancel_upload():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/collection-profile/<collection_name>', methods=['GET'])
+def get_collection_profile(collection_name: str):
+    """
+    Ritorna il profilo aggregato di una collection.
+    Cerca prima in memoria (COLLECTION_PROFILES), poi in Weaviate come fallback.
+    Query params opzionali: host, port (default 127.0.0.1:8080)
+    """
+    # 1. Cache in memoria
+    profile = COLLECTION_PROFILES.get(collection_name)
+    if profile:
+        return jsonify(profile)
+
+    # 2. Fallback: leggi da Weaviate
+    host = request.args.get('host', '127.0.0.1')
+    port = request.args.get('port', '8080')
+    client = None
+    try:
+        client = init_weaviate_client(host, port)
+        profile = read_collection_profile_from_weaviate(client, collection_name)
+    except Exception as e:
+        print(f"[Profiles] Errore connessione Weaviate per lettura profilo: {e}")
+    finally:
+        if client is not None:
+            client.close()
+
+    if not profile:
+        return jsonify({"error": f"Nessun profilo disponibile per la collection '{collection_name}'"}), 404
+
+    # Carica in memoria per richieste future
+    COLLECTION_PROFILES[collection_name] = profile
+    return jsonify(profile)
+
+
+@app.route('/api/collection-profiles', methods=['GET'])
+def get_all_collection_profiles():
+    """
+    Ritorna tutti i profili disponibili.
+    Legge prima tutti i profili da Weaviate (fonte di verità),
+    poi integra con quelli in memoria non ancora persistiti.
+    Query params opzionali: host, port (default 127.0.0.1:8080)
+    """
+    host = request.args.get('host', '127.0.0.1')
+    port = request.args.get('port', '8080')
+    client = None
+    weaviate_profiles: Dict[str, Dict] = {}
+
+    try:
+        client = init_weaviate_client(host, port)
+        existing = client.collections.list_all()
+        if _PROFILES_COLLECTION_NAME in existing:
+            col = client.collections.get(_PROFILES_COLLECTION_NAME)
+            result = col.query.fetch_objects(limit=200)
+            for obj in result.objects:
+                p = _weaviate_properties_to_profile(obj.properties)
+                weaviate_profiles[p["collection_name"]] = p
+    except Exception as e:
+        print(f"[Profiles] Errore lettura profili da Weaviate: {e}")
+    finally:
+        if client is not None:
+            client.close()
+
+    # Unisci con cache in memoria (priorità a Weaviate)
+    merged: Dict[str, Dict] = {**COLLECTION_PROFILES, **weaviate_profiles}
+    return jsonify(list(merged.values()))
 
 
 @app.route('/api/collections', methods=['GET'])
